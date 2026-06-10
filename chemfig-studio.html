@@ -1993,24 +1993,19 @@
                     sg.w = ctx.measureText(sg.t).width;
                     total += sg.w;
                 });
-                // halo
+                // No enclosing halo: bonds are already trimmed back from labelled
+                // atoms in drawBond (pad = 11), so the glyph sits in a clean gap and
+                // doesn't need a paper-coloured ellipse (which only punched a "bubble"
+                // hole through the grid). Selection/hover is shown by recolouring the
+                // glyph plus a short underline — never a ring around the text.
                 ctx.textAlign = "left";
                 ctx.textBaseline = "middle";
-                ctx.fillStyle = "#FCFBF6";
-                ctx.beginPath();
-                ctx.ellipse(a.x, a.y, total / 2 + 6, 12, 0, 0, 7);
-                ctx.fill();
-                if (isSel) {
-                    ctx.strokeStyle = cssVar("--amber");
-                    ctx.lineWidth = 1.8;
-                    ctx.stroke();
-                } else if (isHov) {
-                    ctx.strokeStyle = cssVar("--accent");
-                    ctx.lineWidth = 1.6;
-                    ctx.stroke();
-                }
-                // draw segments left->right
-                const col = colorForLabel(lab);
+                const baseCol = colorForLabel(lab);
+                const col = isSel
+                    ? cssVar("--amber")
+                    : isHov
+                      ? cssVar("--accent")
+                      : baseCol;
                 let x = a.x - total / 2;
                 segs.forEach((sg) => {
                     ctx.font = `600 ${sg.k === "base" ? BASE : SMALL}px "Space Grotesk", sans-serif`;
@@ -2019,6 +2014,15 @@
                     ctx.fillText(sg.t, x, a.y + dy);
                     x += sg.w;
                 });
+                if (isSel || isHov) {
+                    ctx.strokeStyle = col;
+                    ctx.lineWidth = isSel ? 1.8 : 1.4;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(a.x - total / 2, a.y + 11);
+                    ctx.lineTo(a.x + total / 2, a.y + 11);
+                    ctx.stroke();
+                }
             }
 
             /* ---------- pointer interaction ---------- */
