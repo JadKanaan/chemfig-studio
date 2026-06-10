@@ -1545,7 +1545,14 @@
                     })(root.id, -1);
 
                     const seen = new Set();
-                    const chargeTeX = (c) => (c ? "^{" + c + "}" : "");
+                    const chargeTeX = (c) =>
+                        c
+                            ? "^{" +
+                              c
+                                  .replace(/\+/g, "\\oplus")
+                                  .replace(/-/g, "\\ominus") +
+                              "}"
+                            : "";
                     // reversed spellings for terminal groups, so the connecting
                     // (hetero)atom can be written on the side facing its bond
                     const REV = {
@@ -1558,13 +1565,12 @@
                         CN: "NC",
                     };
                     const atomLabel = (a) => {
-                        if (
-                            skeletal &&
-                            a.element === "C" &&
-                            degree[a.id] > 0 &&
-                            !a.charge
-                        )
-                            return chargeTeX(a.charge);
+                        const skelC =
+                            skeletal && a.element === "C" && degree[a.id] > 0;
+                        // skeletal carbon vertex: no symbol when neutral; when
+                        // charged, keep the vertex bare and attach only the charge
+                        // (an empty atom {} so the bond still meets a clean vertex)
+                        if (skelC) return a.charge ? "{}" + chargeTeX(a.charge) : "";
                         let base = a.element;
                         // For a terminal multi-atom group, chemfig splits the label
                         // and lays the pieces out left-to-right, always attaching the
@@ -1744,6 +1750,12 @@
 
             /* ---------- chemfig label -> renderable segments ----------
    parses  NH_2 , SO_3H , OCH_3 , N^{+} , O_{...}  + a charge string  */
+            function chargeGlyph(c) {
+                // circled charge symbols for on-canvas display
+                return c
+                    ? c.replace(/\+/g, "\u2295").replace(/-/g, "\u2296")
+                    : "";
+            }
             function parseLabel(label, charge) {
                 const segs = [];
                 const str = label || "";
@@ -1765,7 +1777,7 @@
                         segs.push({ t: ch, k: "base" });
                     }
                 }
-                if (charge) segs.push({ t: charge, k: "sup" });
+                if (charge) segs.push({ t: chargeGlyph(charge), k: "sup" });
                 return segs;
             }
 
@@ -2028,10 +2040,12 @@
             }
             function drawAtom(a) {
                 let lab = visibleLabel(a);
-                if (a.charge && lab === null) lab = a.element; // show the vertex's letter when it carries a charge
                 const isSel = selected && selected.id === a.id;
                 const isHov = hover && hover.id === a.id;
-                if (!lab && !a.charge) {
+                // a charged skeletal-carbon vertex stays a bare vertex (no "C"),
+                // we just float the charge next to it
+                const bareCharged = lab === null && a.charge;
+                const vertexDot = () => {
                     if (isSel) {
                         ctx.fillStyle = cssVar("--amber");
                         ctx.beginPath();
@@ -2045,9 +2059,25 @@
                     } else {
                         ctx.fillStyle = "#cfc8b8";
                         ctx.beginPath();
-                        ctx.arc(a.x, a.y, 2.1, 0, 7);
+                        ctx.arc(a.x, a.y, bareCharged ? 2.6 : 2.1, 0, 7);
                         ctx.fill();
                     }
+                };
+                if (lab === null && !a.charge) {
+                    vertexDot();
+                    return;
+                }
+                if (bareCharged) {
+                    vertexDot();
+                    ctx.textAlign = "left";
+                    ctx.textBaseline = "middle";
+                    ctx.font = `600 11px "Space Grotesk", sans-serif`;
+                    ctx.fillStyle = isSel
+                        ? cssVar("--amber")
+                        : isHov
+                          ? cssVar("--accent")
+                          : colorForLabel("C");
+                    ctx.fillText(chargeGlyph(a.charge), a.x + 5, a.y - 9);
                     return;
                 }
                 // build segments and measure
