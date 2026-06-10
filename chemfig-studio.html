@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chemfig Studio — draw molecules, get LaTeX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#17150f;
+    --paper:#FCFBF6;
+    --paper-line:#ECE7DA;
+    --panel:#211F1A;
+    --panel-2:#2A2823;
+    --panel-3:#34322B;
+    --line:#403D34;
+    --text:#F3EFE6;
+    --text-dim:#A8A294;
+    --text-dimmer:#76716685;
+    --accent:#16A892;
+    --accent-press:#0E8a78;
+    --amber:#E0A23B;
+    --bond:#1A1714;
+    /* CPK element colors */
+    --el-C:#2D2A24; --el-H:#6f6a60; --el-O:#E2483D; --el-N:#3D63D6;
+    --el-S:#D9A521; --el-P:#E07A23; --el-F:#3FA94F; --el-Cl:#46B85B;
+    --el-Br:#9B4B2E; --el-I:#7A36B0;
+    --radius:9px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--panel);
+    color:var(--text);
+    font-family:"Inter",system-ui,sans-serif;
+    font-size:14px;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  button{font-family:inherit;cursor:pointer;color:inherit;border:none;background:none;}
+  .eyebrow{font-family:"Space Grotesk",sans-serif;text-transform:uppercase;letter-spacing:.16em;font-size:10.5px;font-weight:600;color:var(--text-dim);}
+
+  /* ---------- App shell ---------- */
+  .app{display:flex;flex-direction:column;height:100vh;}
+  header.top{
+    display:flex;align-items:center;gap:18px;
+    padding:11px 18px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#262420,#1e1c18);
+    flex:0 0 auto;
+  }
+  .brand{display:flex;align-items:center;gap:11px;}
+  .brand .mark{width:30px;height:30px;flex:0 0 auto;}
+  .brand h1{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:16px;
+    letter-spacing:.02em;margin:0;line-height:1;
+  }
+  .brand .sub{font-size:11px;color:var(--text-dim);letter-spacing:.04em;margin-top:2px;}
+  .tabs{display:flex;gap:4px;margin-left:8px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:3px;}
+  .tab{padding:7px 15px;border-radius:6px;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:12.5px;letter-spacing:.04em;color:var(--text-dim);transition:.15s;}
+  .tab[aria-selected="true"]{background:var(--accent);color:#06241f;}
+  .tab:hover:not([aria-selected="true"]){color:var(--text);}
+  .top .spacer{flex:1;}
+  .toggle{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;}
+  .toggle .track{width:38px;height:21px;border-radius:11px;background:var(--panel-3);position:relative;transition:.18s;border:1px solid var(--line);}
+  .toggle .knob{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--text-dim);transition:.18s;}
+  .toggle input{display:none;}
+  .toggle input:checked + .track{background:var(--accent);border-color:var(--accent);}
+  .toggle input:checked + .track .knob{left:19px;background:#06241f;}
+  .toggle .lbl{font-size:12.5px;font-weight:500;}
+  .toggle .hint{font-size:11px;color:var(--text-dim);}
+
+  /* ---------- Build view ---------- */
+  .build{flex:1;display:grid;grid-template-columns:232px 1fr 360px;min-height:0;}
+  .rail{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:16px 14px 40px;}
+  .rail::-webkit-scrollbar,.outpanel::-webkit-scrollbar,.lib-list::-webkit-scrollbar{width:8px;}
+  .rail::-webkit-scrollbar-thumb,.outpanel::-webkit-scrollbar-thumb,.lib-list::-webkit-scrollbar-thumb{background:var(--panel-3);border-radius:4px;}
+  .group{margin-bottom:22px;}
+  .group > .eyebrow{margin-bottom:10px;display:block;}
+
+  .tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .tool{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:9px 4px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);transition:.13s;}
+  .tool svg{width:19px;height:19px;}
+  .tool span{font-size:11px;font-weight:500;color:var(--text-dim);}
+  .tool:hover{border-color:#55514657;background:var(--panel-3);}
+  .tool[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);}
+  .tool[aria-pressed="true"] span{color:#06241f;}
+  .tool[aria-pressed="true"] svg{color:#06241f;stroke:#06241f;}
+
+  .el-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;}
+  .el{position:relative;height:38px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line);font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;transition:.12s;}
+  .el .dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;}
+  .el:hover{border-color:#55514657;}
+  .el[aria-pressed="true"]{border-color:var(--text);box-shadow:inset 0 0 0 1px var(--text);}
+
+  .order-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .order{height:40px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;transition:.12s;}
+  .order:hover{border-color:#55514657;}
+  .order[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);}
+  .order[aria-pressed="true"] line{stroke:#06241f;}
+
+  .tmpl-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .tmpl{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line);transition:.12s;text-align:left;}
+  .tmpl:hover{border-color:var(--accent);background:var(--panel-3);}
+  .tmpl svg{width:22px;height:22px;flex:0 0 auto;color:var(--text-dim);}
+  .tmpl span{font-size:11.5px;font-weight:500;}
+  .tmpl.full{grid-column:span 2;}
+
+  /* ---------- Canvas ---------- */
+  .stage{position:relative;background:#191712;display:flex;flex-direction:column;min-width:0;}
+  .stage-bar{display:flex;align-items:center;gap:14px;padding:9px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex:0 0 auto;}
+  .stage-bar .status{font-size:12px;color:var(--text-dim);}
+  .stage-bar .status b{color:var(--text);font-weight:600;}
+  .stage-bar .actions{margin-left:auto;display:flex;gap:7px;}
+  .mini{display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:7px;background:var(--panel-2);border:1px solid var(--line);font-size:12px;font-weight:500;color:var(--text-dim);transition:.13s;}
+  .mini:hover{color:var(--text);border-color:#55514657;}
+  .mini svg{width:14px;height:14px;}
+  .mini.danger:hover{color:#ff8a7a;border-color:#5a2c2680;}
+  .canvas-wrap{flex:1;position:relative;overflow:hidden;}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;}
+  .empty-hint{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none;color:#8c8475;}
+  .empty-hint .big{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:15px;color:#a39a88;}
+  .empty-hint .small{font-size:12.5px;max-width:330px;text-align:center;line-height:1.5;}
+
+  /* ---------- Output panel ---------- */
+  .outpanel{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;}
+  .out-head{padding:15px 18px 12px;border-bottom:1px solid var(--line);}
+  .out-head .eyebrow{display:block;margin-bottom:3px;}
+  .out-head h2{font-family:"Space Grotesk",sans-serif;font-size:15px;font-weight:600;margin:0;}
+  .code-box{margin:16px 18px 0;background:#15140f;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .code-box .cb-top{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid var(--line);}
+  .code-box .cb-top .eyebrow{font-size:9.5px;}
+  .copy{display:flex;align-items:center;gap:6px;padding:5px 11px;border-radius:6px;background:var(--accent);color:#06241f;font-weight:600;font-size:12px;transition:.13s;}
+  .copy:hover{background:var(--accent-press);}
+  .copy svg{width:13px;height:13px;}
+  .copy.copied{background:var(--amber);color:#2a1c00;}
+  pre.code{margin:0;padding:14px 13px;font-family:"JetBrains Mono",monospace;font-size:12.5px;line-height:1.65;color:#e9e4d6;white-space:pre-wrap;word-break:break-word;max-height:230px;overflow:auto;}
+  .tok-cmd{color:var(--accent);}
+  .tok-ang{color:var(--amber);}
+  .tok-el{color:#7fb0ff;}
+  .tok-bond{color:#ff9d7a;}
+
+  .preamble{margin:14px 18px 0;padding:11px 13px;background:var(--panel-2);border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:7px;font-size:12px;color:var(--text-dim);line-height:1.55;}
+  .preamble code{font-family:"JetBrains Mono",monospace;color:#e9e4d6;font-size:11.5px;}
+  .stats{display:flex;gap:18px;margin:16px 18px;}
+  .stat .n{font-family:"Space Grotesk",sans-serif;font-size:21px;font-weight:600;line-height:1;}
+  .stat .l{font-size:10.5px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;margin-top:4px;}
+  .tips{margin:4px 18px 24px;}
+  .tips summary{font-size:12px;color:var(--text-dim);cursor:pointer;font-weight:500;list-style:none;display:flex;align-items:center;gap:6px;}
+  .tips summary::-webkit-details-marker{display:none;}
+  .tips summary::before{content:"▸";transition:.15s;display:inline-block;}
+  .tips[open] summary::before{transform:rotate(90deg);}
+  .tips ul{margin:9px 0 0;padding-left:18px;font-size:12px;color:var(--text-dim);line-height:1.7;}
+  .tips kbd{font-family:"JetBrains Mono",monospace;background:var(--panel-3);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11px;color:var(--text);}
+
+  /* ---------- Library view ---------- */
+  .library{flex:1;display:grid;grid-template-columns:1fr 420px;min-height:0;}
+  .lib-left{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;}
+  .lib-search{padding:18px 22px 14px;border-bottom:1px solid var(--line);}
+  .lib-search input{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:12px 14px;color:var(--text);font-size:14px;font-family:inherit;}
+  .lib-search input:focus{outline:none;border-color:var(--accent);}
+  .lib-search input::placeholder{color:var(--text-dimmer);}
+  .lib-search .count{margin-top:9px;font-size:11.5px;color:var(--text-dim);}
+  .lib-list{overflow-y:auto;padding:10px 14px 40px;}
+  .lib-cat{margin:14px 8px 7px;}
+  .lib-item{display:flex;align-items:center;gap:14px;padding:11px 12px;border-radius:9px;border:1px solid transparent;transition:.12s;cursor:pointer;}
+  .lib-item:hover{background:var(--panel-2);border-color:var(--line);}
+  .lib-item[aria-selected="true"]{background:var(--panel-2);border-color:var(--accent);}
+  .lib-item .thumb{width:48px;height:48px;flex:0 0 auto;background:var(--paper);border-radius:7px;display:flex;align-items:center;justify-content:center;}
+  .lib-item .meta .nm{font-weight:600;font-size:13.5px;}
+  .lib-item .meta .fm{font-size:11.5px;color:var(--text-dim);font-family:"JetBrains Mono",monospace;margin-top:2px;}
+  .lib-detail{display:flex;flex-direction:column;min-height:0;overflow-y:auto;}
+  .lib-detail .empty{margin:auto;text-align:center;color:#8c8475;padding:40px;}
+  .ld-head{padding:24px 24px 16px;border-bottom:1px solid var(--line);}
+  .ld-head .nm{font-family:"Space Grotesk",sans-serif;font-size:22px;font-weight:600;}
+  .ld-head .fm{font-family:"JetBrains Mono",monospace;color:var(--text-dim);margin-top:4px;font-size:13px;}
+  .ld-preview{margin:20px 24px;background:var(--paper);border-radius:12px;height:200px;display:flex;align-items:center;justify-content:center;}
+  .ld-actions{display:flex;gap:9px;margin:0 24px;}
+  .btn{display:flex;align-items:center;gap:7px;padding:10px 15px;border-radius:8px;font-weight:600;font-size:13px;transition:.13s;border:1px solid var(--line);}
+  .btn.primary{background:var(--accent);color:#06241f;border-color:var(--accent);}
+  .btn.primary:hover{background:var(--accent-press);}
+  .btn.ghost{background:var(--panel-2);color:var(--text);}
+  .btn.ghost:hover{border-color:#55514657;}
+  .btn svg{width:14px;height:14px;}
+
+  @media (max-width:1080px){
+    .build{grid-template-columns:200px 1fr 300px;}
+    .library{grid-template-columns:1fr 340px;}
+  }
+  @media (max-width:820px){
+    .build,.library{grid-template-columns:1fr;grid-template-rows:auto;overflow-y:auto;}
+    .rail,.outpanel,.lib-left{border:none;border-bottom:1px solid var(--line);}
+    .stage{min-height:60vh;}
+    .tabs .tab{padding:7px 11px;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40" fill="none">
+        <polygon points="20,4 33,12 33,28 20,36 7,28 7,12" stroke="#16A892" stroke-width="2.4" fill="none"/>
+        <polygon points="20,10 28,15 28,25 20,30 12,25 12,15" stroke="#E0A23B" stroke-width="1.6" fill="none" opacity=".85"/>
+      </svg>
+      <div>
+        <h1>Chemfig Studio</h1>
+        <div class="sub">draw a structure → get the LaTeX</div>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-view="build">Build</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="library">Name lookup</button>
+    </div>
+    <div class="spacer"></div>
+    <label class="toggle" title="Hide implicit carbons & C–H hydrogens, like a line-angle drawing">
+      <input type="checkbox" id="skeletalToggle" checked />
+      <span class="track"><span class="knob"></span></span>
+      <span class="lbl">Skeletal</span>
+    </label>
+  </header>
+
+  <!-- ============ BUILD VIEW ============ -->
+  <section class="build" id="view-build">
+    <aside class="rail">
+      <div class="group">
+        <span class="eyebrow">Tool</span>
+        <div class="tool-grid" id="toolGrid">
+          <button class="tool" data-tool="draw" aria-pressed="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#A8A294" stroke-width="2" stroke-linecap="round"><path d="M4 20l5-1L19 9a2.8 2.8 0 0 0-4-4L5 15l-1 5z"/><path d="M14 6l4 4"/></svg>
+            <span>Draw</span>
+          </button>
+          <button class="tool" data-tool="move" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#A8A294" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M8 6l4-4 4 4M8 18l4 4 4-4M6 8l-4 4 4 4M18 8l4 4-4 4"/></svg>
+            <span>Move</span>
+          </button>
+          <button class="tool" data-tool="erase" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#A8A294" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l7 4 11-11-7-7L4 12z"/><path d="M9 9l6 6"/></svg>
+            <span>Erase</span>
+          </button>
+          <button class="tool" data-tool="clear" aria-pressed="false" id="clearTool">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#A8A294" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            <span>Clear all</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="eyebrow">Atom</span>
+        <div class="el-grid" id="elGrid"></div>
+      </div>
+
+      <div class="group">
+        <span class="eyebrow">Bond order</span>
+        <div class="order-grid" id="orderGrid">
+          <button class="order" data-order="1" aria-pressed="true" title="Single">
+            <svg viewBox="0 0 30 20"><line x1="4" y1="10" x2="26" y2="10" stroke="#A8A294" stroke-width="2.2"/></svg>
+          </button>
+          <button class="order" data-order="2" aria-pressed="false" title="Double">
+            <svg viewBox="0 0 30 20"><line x1="4" y1="7" x2="26" y2="7" stroke="#A8A294" stroke-width="2.2"/><line x1="4" y1="13" x2="26" y2="13" stroke="#A8A294" stroke-width="2.2"/></svg>
+          </button>
+          <button class="order" data-order="3" aria-pressed="false" title="Triple">
+            <svg viewBox="0 0 30 20"><line x1="4" y1="5" x2="26" y2="5" stroke="#A8A294" stroke-width="2"/><line x1="4" y1="10" x2="26" y2="10" stroke="#A8A294" stroke-width="2"/><line x1="4" y1="15" x2="26" y2="15" stroke="#A8A294" stroke-width="2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="eyebrow">Rings</span>
+        <div class="tmpl-grid" id="ringGrid"></div>
+      </div>
+
+      <div class="group">
+        <span class="eyebrow">Groups</span>
+        <div class="tmpl-grid" id="groupGrid"></div>
+      </div>
+    </aside>
+
+    <main class="stage">
+      <div class="stage-bar">
+        <div class="status" id="statusLine">Drawing <b id="stAtom">carbon</b> · <b id="stOrder">single</b> bonds</div>
+        <div class="actions">
+          <button class="mini" id="undoBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a6 6 0 0 1 0 12h-3"/></svg>Undo</button>
+          <button class="mini" id="exampleBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 7.4H22l-6 4.4 2.3 7.2L12 16.6 5.7 21l2.3-7.2-6-4.4h7.6z"/></svg>Example</button>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="canvas"></canvas>
+        <div class="empty-hint" id="emptyHint">
+          <div class="big">Draw like you would on paper</div>
+          <div class="small">Click to drop an atom. Drag from one atom to the next to grow a bond. Double-click a vertex to sprout. Click a bond to toggle single / double / triple.</div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="outpanel">
+      <div class="out-head">
+        <span class="eyebrow">Output</span>
+        <h2>chemfig source</h2>
+      </div>
+      <div class="code-box">
+        <div class="cb-top">
+          <span class="eyebrow">LaTeX</span>
+          <button class="copy" id="copyBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy</button>
+        </div>
+        <pre class="code" id="codeOut"></pre>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="atomCount">0</div><div class="l">Atoms</div></div>
+        <div class="stat"><div class="n" id="bondCount">0</div><div class="l">Bonds</div></div>
+        <div class="stat"><div class="n" id="ringCount">0</div><div class="l">Rings</div></div>
+      </div>
+      <div class="preamble">Add <code>\usepackage{chemfig}</code> to your preamble. Drop the line above anywhere in the document body.</div>
+      <details class="tips">
+        <summary>Drawing shortcuts</summary>
+        <ul>
+          <li><b>Click empty</b> — place the active atom</li>
+          <li><b>Drag atom → empty</b> — new bonded atom (snaps to 30°)</li>
+          <li><b>Drag atom → atom</b> — bond two existing atoms</li>
+          <li><b>Double-click atom</b> — sprout a new bond</li>
+          <li><b>Click a bond</b> — cycle single → double → triple</li>
+          <li><b>Click atom</b> (with another element active) — change its element</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>Del</kbd> erase tool</li>
+        </ul>
+      </details>
+    </aside>
+  </section>
+
+  <!-- ============ LIBRARY VIEW ============ -->
+  <section class="library" id="view-library" style="display:none;">
+    <div class="lib-left">
+      <div class="lib-search">
+        <input id="libSearch" type="text" placeholder="Search by name or formula — benzene, ethanol, C2H6O…" autocomplete="off" />
+        <div class="count" id="libCount"></div>
+      </div>
+      <div class="lib-list" id="libList"></div>
+    </div>
+    <div class="lib-detail" id="libDetail">
+      <div class="empty">Pick a compound to see its chemfig source.</div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* =================================================================
+   chemfig generation engine  (validated against test molecules)
+   ================================================================= */
+function generateChemfig(atoms, bonds, opts){
+  opts = opts || {};
+  const skeletal = opts.skeletal !== false;
+  let A = atoms.map(a => ({...a}));
+  let B = bonds.map((b,i)=>({...b, _bid:i}));
+  const eltOf = id => { const a=A.find(x=>x.id===id); return a?a.element:null; };
+
+  if(skeletal){
+    const remove=new Set();
+    A.forEach(a=>{
+      if(a.element==='H'){
+        const nb=B.filter(b=>b.a1===a.id||b.a2===a.id).map(b=>b.a1===a.id?b.a2:b.a1);
+        if(nb.length && nb.every(n=>eltOf(n)==='C')) remove.add(a.id);
+      }
+    });
+    A=A.filter(a=>!remove.has(a.id));
+    B=B.filter(b=>!remove.has(b.a1)&&!remove.has(b.a2));
+  }
+  if(A.length===0) return {code:'', rings:0};
+
+  const byId={}; A.forEach(a=>byId[a.id]=a);
+  const adj={}; A.forEach(a=>adj[a.id]=[]);
+  B.forEach(b=>{ if(adj[b.a1]&&adj[b.a2]){
+    adj[b.a1].push({to:b.a2,order:b.order||1,bid:b._bid});
+    adj[b.a2].push({to:b.a1,order:b.order||1,bid:b._bid});
+  }});
+  const degree={}; A.forEach(a=>degree[a.id]=adj[a.id].length);
+  const orderedNb = id => adj[id].slice().sort((p,q)=>q.order-p.order);
+
+  // process each connected component, rooted at its leftmost atom
+  const globalVisited=new Set();
+  const comps=[];
+  A.forEach(a=>{
+    if(globalVisited.has(a.id)) return;
+    const stack=[a.id], comp=[];
+    globalVisited.add(a.id);
+    while(stack.length){
+      const u=stack.pop(); comp.push(u);
+      adj[u].forEach(e=>{ if(!globalVisited.has(e.to)){globalVisited.add(e.to);stack.push(e.to);} });
+    }
+    comps.push(comp);
+  });
+
+  let ringTotal=0;
+  const pieces = comps.map(comp=>{
+    const root = comp.map(id=>byId[id]).reduce((m,a)=>(a.x<m.x||(a.x===m.x&&a.y<m.y))?a:m, byId[comp[0]]);
+    const disc={}, visited=new Set(), usedTree=new Set(), ringMark={}; const seenBack=new Set();
+    let t=0, ringN=0;
+    (function dfs1(u,fromBid){
+      visited.add(u); disc[u]=t++;
+      for(const e of orderedNb(u)){
+        if(e.bid===fromBid) continue;
+        if(!visited.has(e.to)){ usedTree.add(e.bid); dfs1(e.to,e.bid); }
+        else if(!usedTree.has(e.bid) && !seenBack.has(e.bid)){
+          seenBack.add(e.bid); ringN++; ringTotal++;
+          const label='r'+ringTotal;
+          const earlier = disc[e.to]<disc[u] ? e.to : u;
+          const later = earlier===u ? e.to : u;
+          (ringMark[earlier]=ringMark[earlier]||[]).push({label,order:e.order,role:'open'});
+          (ringMark[later]=ringMark[later]||[]).push({label,order:e.order,role:'close'});
+        }
+      }
+    })(root.id,-1);
+
+    const seen=new Set();
+    const atomLabel = a => (skeletal && a.element==='C' && degree[a.id]>0) ? '' : a.element;
+    const ringTok = id => { const m=ringMark[id]; if(!m) return '';
+      return m.map(x=> (x.role==='close'&&x.order>1)?`?[${x.label},${x.order}]`:`?[${x.label}]`).join(''); };
+    const bondStr=(from,to,order)=>{
+      const p=byId[from], c=byId[to];
+      const ang=Math.round(Math.atan2(-(c.y-p.y),(c.x-p.x))*180/Math.PI);
+      const ch = order===3?'~':order===2?'=':'-';
+      return `${ch}[:${ang}]`;
+    };
+    function emit(u,fromBid){
+      seen.add(u);
+      let s=atomLabel(byId[u])+ringTok(u);
+      const kids=orderedNb(u).filter(e=>e.bid!==fromBid && usedTree.has(e.bid) && !seen.has(e.to));
+      kids.forEach((e,i)=>{
+        const sub=bondStr(u,e.to,e.order)+emit(e.to,e.bid);
+        s += (i<kids.length-1)?`(${sub})`:sub;
+      });
+      return s;
+    }
+    return emit(root.id,-1);
+  });
+
+  // multiple disconnected fragments -> join with a non-bonded spacer
+  const body = pieces.length>1 ? pieces.join('\\;') : pieces[0];
+  return {code:'\\chemfig{'+body+'}', rings:ringTotal};
+}
+
+/* =================================================================
+   App state
+   ================================================================= */
+const CPK = {C:'--el-C',H:'--el-H',O:'--el-O',N:'--el-N',S:'--el-S',P:'--el-P',F:'--el-F',Cl:'--el-Cl',Br:'--el-Br',I:'--el-I'};
+const ELEMENTS = ['C','H','O','N','S','P','F','Cl','Br','I'];
+const BOND_LEN = 46, SNAP = 30;
+let atoms=[], bonds=[], aid=0, bid=0;
+let activeEl='C', activeOrder=1, tool='draw';
+let skeletal=true;
+let undoStack=[];
+
+const canvas=document.getElementById('canvas');
+const ctx=canvas.getContext('2d');
+const wrap=document.getElementById('canvasWrap');
+let DPR=window.devicePixelRatio||1, W=0, Hh=0;
+
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+
+function resize(){
+  const r=wrap.getBoundingClientRect();
+  W=r.width; Hh=r.height; DPR=window.devicePixelRatio||1;
+  canvas.width=W*DPR; canvas.height=Hh*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  draw();
+}
+window.addEventListener('resize',resize);
+
+/* ---------- history ---------- */
+function snapshot(){
+  undoStack.push(JSON.stringify({atoms,bonds,aid,bid}));
+  if(undoStack.length>80) undoStack.shift();
+}
+function undo(){
+  if(!undoStack.length) return;
+  const s=JSON.parse(undoStack.pop());
+  atoms=s.atoms; bonds=s.bonds; aid=s.aid; bid=s.bid;
+  draw(); refreshOutput();
+}
+
+/* ---------- model helpers ---------- */
+function newAtom(x,y,el){ const a={id:'a'+(aid++),x,y,element:el||activeEl}; atoms.push(a); return a; }
+function newBond(a1,a2,order){
+  if(a1===a2) return null;
+  const ex=bonds.find(b=>(b.a1===a1&&b.a2===a2)||(b.a1===a2&&b.a2===a1));
+  if(ex){ ex.order=order||activeOrder; return ex; }
+  const b={id:'b'+(bid++),a1,a2,order:order||activeOrder}; bonds.push(b); return b;
+}
+function atomAt(x,y,r=16){
+  let best=null,bd=r*r;
+  for(const a of atoms){ const dx=a.x-x,dy=a.y-y,d=dx*dx+dy*dy; if(d<bd){bd=d;best=a;} }
+  return best;
+}
+function bondAt(x,y,r=8){
+  let best=null,bd=r;
+  for(const b of bonds){
+    const p=atoms.find(a=>a.id===b.a1), q=atoms.find(a=>a.id===b.a2);
+    if(!p||!q) continue;
+    const d=ptSeg(x,y,p.x,p.y,q.x,q.y);
+    if(d<bd){bd=d;best=b;}
+  }
+  return best;
+}
+function ptSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1,dy=y2-y1,L=dx*dx+dy*dy;
+  let t=L?((px-x1)*dx+(py-y1)*dy)/L:0; t=Math.max(0,Math.min(1,t));
+  const cx=x1+t*dx,cy=y1+t*dy; return Math.hypot(px-cx,py-cy);
+}
+function openAngle(atom){
+  const ns=bonds.filter(b=>b.a1===atom.id||b.a2===atom.id)
+    .map(b=>{const o=atoms.find(a=>a.id===(b.a1===atom.id?b.a2:b.a1));return Math.atan2(o.y-atom.y,o.x-atom.x)*180/Math.PI;});
+  if(!ns.length) return 30;
+  if(ns.length===1) return ns[0]+ (Math.abs(ns[0])>90?-60:60) * (ns[0]>0?-1:1) + (ns[0]>=0? -120: 120);
+  ns.sort((a,b)=>a-b);
+  let bestGap=-1,bestMid=30;
+  for(let i=0;i<ns.length;i++){
+    const a1=ns[i], a2=(i===ns.length-1)?ns[0]+360:ns[i+1];
+    const gap=a2-a1; if(gap>bestGap){bestGap=gap;bestMid=(a1+a2)/2;}
+  }
+  return bestMid;
+}
+function snapTo(ox,oy,x,y){
+  let ang=Math.atan2(y-oy,x-ox)*180/Math.PI;
+  ang=Math.round(ang/SNAP)*SNAP;
+  const rad=ang*Math.PI/180;
+  return {x:ox+BOND_LEN*Math.cos(rad), y:oy+BOND_LEN*Math.sin(rad)};
+}
+
+/* ---------- rendering ---------- */
+function visibleLabel(a){
+  if(a.element==='C' && skeletal && bonds.some(b=>b.a1===a.id||b.a2===a.id)) return null;
+  if(a.element==='C' && skeletal) return 'C';
+  return a.element;
+}
+function draw(){
+  ctx.clearRect(0,0,W,Hh);
+  // engineering grid
+  ctx.save();
+  ctx.strokeStyle='#221f19'; ctx.lineWidth=1;
+  const g=23;
+  ctx.beginPath();
+  for(let x=g/2;x<W;x+=g){ctx.moveTo(x,0);ctx.lineTo(x,Hh);}
+  for(let y=g/2;y<Hh;y+=g){ctx.moveTo(0,y);ctx.lineTo(W,y);}
+  ctx.stroke();
+  ctx.restore();
+
+  const bondCol=cssVar('--paper')==='' ? '#e9e4d6' : '#d9d3c4';
+  // bonds
+  bonds.forEach(b=>{
+    const p=atoms.find(a=>a.id===b.a1), q=atoms.find(a=>a.id===b.a2);
+    if(!p||!q) return;
+    drawBond(p,q,b.order);
+  });
+  // preview bond
+  if(drag && drag.from){
+    const target = drag.overAtom;
+    const ex={x:drag.cx,y:drag.cy};
+    const end = target ? target : (drag.snap||ex);
+    ctx.save();
+    ctx.strokeStyle=cssVar('--accent'); ctx.lineWidth=2.4; ctx.setLineDash([6,5]);
+    ctx.beginPath();ctx.moveTo(drag.from.x,drag.from.y);ctx.lineTo(end.x,end.y);ctx.stroke();
+    ctx.restore();
+    if(!target){
+      ctx.save();ctx.fillStyle=cssVar('--accent');ctx.globalAlpha=.85;
+      ctx.beginPath();ctx.arc(end.x,end.y,4,0,7);ctx.fill();ctx.restore();
+    }
+  }
+  // atoms
+  atoms.forEach(a=>drawAtom(a));
+  document.getElementById('emptyHint').style.display = atoms.length? 'none':'flex';
+}
+function drawBond(p,q,order){
+  const lab1=visibleLabel(p), lab2=visibleLabel(q);
+  let x1=p.x,y1=p.y,x2=q.x,y2=q.y;
+  const ang=Math.atan2(y2-y1,x2-x1);
+  const pad=11;
+  if(lab1){x1+=Math.cos(ang)*pad;y1+=Math.sin(ang)*pad;}
+  if(lab2){x2-=Math.cos(ang)*pad;y2-=Math.sin(ang)*pad;}
+  const nx=-Math.sin(ang), ny=Math.cos(ang);
+  ctx.strokeStyle='#d9d3c4'; ctx.lineWidth=2.1; ctx.lineCap='round';
+  const seg=(ox,oy)=>{ctx.beginPath();ctx.moveTo(x1+nx*ox,y1+ny*oy);ctx.lineTo(x2+nx*ox,y2+ny*oy);ctx.stroke();};
+  if(order===1){ seg(0,0); }
+  else if(order===2){ seg(3,3); seg(-3,-3); }
+  else { seg(0,0); seg(4.5,4.5); seg(-4.5,-4.5); }
+}
+function drawAtom(a){
+  const lab=visibleLabel(a);
+  const selected = (hover&&hover.id===a.id);
+  if(!lab){
+    // skeletal vertex
+    if(selected){ ctx.fillStyle=cssVar('--accent'); ctx.beginPath();ctx.arc(a.x,a.y,5,0,7);ctx.fill(); }
+    else { ctx.fillStyle='#cfc8b8'; ctx.beginPath();ctx.arc(a.x,a.y,2.1,0,7);ctx.fill(); }
+    return;
+  }
+  ctx.font='600 16px "Space Grotesk", sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  const w=ctx.measureText(lab).width;
+  // halo
+  ctx.fillStyle='#FCFBF6';
+  ctx.beginPath();ctx.ellipse(a.x,a.y, w/2+5, 12, 0,0,7);ctx.fill();
+  if(selected){ ctx.strokeStyle=cssVar('--accent');ctx.lineWidth=1.6;ctx.stroke(); }
+  ctx.fillStyle=cssVar(CPK[a.element]||'--el-C');
+  ctx.fillText(lab,a.x,a.y);
+}
+
+/* ---------- pointer interaction ---------- */
+let drag=null, hover=null, mouseDownPt=null, dblTimer=null;
+function getPt(e){
+  const r=canvas.getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  return {x:t.clientX-r.left, y:t.clientY-r.top};
+}
+canvas.addEventListener('pointermove',e=>{
+  const p=getPt(e);
+  const a=atomAt(p.x,p.y);
+  const newHover = a || (tool==='draw'?null:null);
+  if(newHover!==hover){ hover=a; if(!drag) draw(); }
+  if(drag){
+    drag.cx=p.x; drag.cy=p.y;
+    if(drag.from){
+      drag.overAtom = atomAt(p.x,p.y,16);
+      if(drag.overAtom===drag.from) drag.overAtom=null;
+      drag.snap = snapTo(drag.from.x,drag.from.y,p.x,p.y);
+    } else if(tool==='move' && drag.moveAtom){
+      drag.moveAtom.x=p.x; drag.moveAtom.y=p.y;
+    }
+    draw();
+    if(tool==='move') refreshOutput();
+  }
+});
+canvas.addEventListener('pointerdown',e=>{
+  canvas.setPointerCapture(e.pointerId);
+  const p=getPt(e);
+  mouseDownPt=p;
+  const a=atomAt(p.x,p.y);
+  if(tool==='erase'){
+    snapshot();
+    if(a){ atoms=atoms.filter(x=>x.id!==a.id); bonds=bonds.filter(b=>b.a1!==a.id&&b.a2!==a.id); }
+    else { const b=bondAt(p.x,p.y); if(b) bonds=bonds.filter(x=>x.id!==b.id); else undoStack.pop(); }
+    draw(); refreshOutput(); return;
+  }
+  if(tool==='move'){
+    if(a){ snapshot(); drag={moveAtom:a,cx:p.x,cy:p.y}; }
+    return;
+  }
+  // draw tool
+  if(a){ drag={from:a,cx:p.x,cy:p.y,overAtom:null,snap:snapTo(a.x,a.y,p.x,p.y),startAtom:a}; }
+  else { drag={from:null,empty:true,cx:p.x,cy:p.y,downPt:p}; }
+});
+canvas.addEventListener('pointerup',e=>{
+  const p=getPt(e);
+  if(!drag){ mouseDownPt=null; return; }
+  const moved = mouseDownPt && Math.hypot(p.x-mouseDownPt.x,p.y-mouseDownPt.y)>6;
+
+  if(tool==='move'){ drag=null; refreshOutput(); return; }
+
+  if(drag.from){            // started on an atom (draw tool)
+    if(!moved){
+      // click on atom: change element OR cycle nothing
+      if(drag.from.element!==activeEl){ snapshot(); drag.from.element=activeEl; }
+    } else if(drag.overAtom){
+      snapshot(); newBond(drag.from.id,drag.overAtom.id,activeOrder);
+    } else {
+      snapshot();
+      const s=drag.snap;
+      const na=newAtom(s.x,s.y,activeEl);
+      newBond(drag.from.id,na.id,activeOrder);
+    }
+  } else {                  // started on empty
+    if(!moved){
+      // could be a bond click
+      const b=bondAt(p.x,p.y);
+      if(b){ snapshot(); b.order = b.order%3 + 1; }
+      else { snapshot(); newAtom(p.x,p.y,activeEl); }
+    } else {
+      snapshot();
+      const a1=newAtom(drag.downPt.x,drag.downPt.y,activeEl);
+      const s=snapTo(a1.x,a1.y,p.x,p.y);
+      const a2=newAtom(s.x,s.y,activeEl);
+      newBond(a1.id,a2.id,activeOrder);
+    }
+  }
+  drag=null; mouseDownPt=null; hover=null;
+  draw(); refreshOutput();
+});
+canvas.addEventListener('dblclick',e=>{
+  const p=getPt(e); const a=atomAt(p.x,p.y);
+  if(a && tool==='draw'){
+    snapshot();
+    const ang=openAngle(a)*Math.PI/180;
+    const na=newAtom(a.x+BOND_LEN*Math.cos(ang), a.y+BOND_LEN*Math.sin(ang), activeEl);
+    newBond(a.id,na.id,activeOrder);
+    draw(); refreshOutput();
+  }
+});
+
+/* ---------- output ---------- */
+function refreshOutput(){
+  const res=generateChemfig(atoms,bonds,{skeletal});
+  const pre=document.getElementById('codeOut');
+  pre.innerHTML = res.code ? highlight(res.code) : '<span style="color:#76716685">Draw something to see the source…</span>';
+  pre.dataset.raw = res.code;
+  document.getElementById('atomCount').textContent=atoms.length;
+  document.getElementById('bondCount').textContent=bonds.length;
+  document.getElementById('ringCount').textContent=res.rings;
+}
+function highlight(code){
+  return code
+    .replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))
+    .replace(/(\\chemfig|\\;)/g,'<span class="tok-cmd">$1</span>')
+    .replace(/(\[:-?\d+(?:,\d+)?\])/g,'<span class="tok-ang">$1</span>')
+    .replace(/([=~])/g,'<span class="tok-bond">$1</span>')
+    .replace(/([A-Z][a-z]?(?:_\d)?)(?![^<]*<\/span>)/g,'<span class="tok-el">$1</span>');
+}
+
+/* =================================================================
+   Palette wiring
+   ================================================================= */
+function buildElGrid(){
+  const g=document.getElementById('elGrid');
+  ELEMENTS.forEach(el=>{
+    const b=document.createElement('button');
+    b.className='el'; b.dataset.el=el; b.setAttribute('aria-pressed', el===activeEl);
+    b.innerHTML=`${el}<span class="dot" style="background:var(${CPK[el]})"></span>`;
+    b.onclick=()=>{ activeEl=el; document.querySelectorAll('.el').forEach(x=>x.setAttribute('aria-pressed',x.dataset.el===el)); updateStatus(); };
+    g.appendChild(b);
+  });
+}
+document.getElementById('toolGrid').addEventListener('click',e=>{
+  const t=e.target.closest('.tool'); if(!t) return;
+  if(t.dataset.tool==='clear'){ if(atoms.length){snapshot();atoms=[];bonds=[];draw();refreshOutput();} return; }
+  tool=t.dataset.tool;
+  document.querySelectorAll('.tool').forEach(x=>x.setAttribute('aria-pressed', x.dataset.tool===tool));
+  updateStatus();
+});
+document.getElementById('orderGrid').addEventListener('click',e=>{
+  const o=e.target.closest('.order'); if(!o) return;
+  activeOrder=+o.dataset.order;
+  document.querySelectorAll('.order').forEach(x=>x.setAttribute('aria-pressed', +x.dataset.order===activeOrder));
+  updateStatus();
+});
+function updateStatus(){
+  const names={C:'carbon',H:'hydrogen',O:'oxygen',N:'nitrogen',S:'sulfur',P:'phosphorus',F:'fluorine',Cl:'chlorine',Br:'bromine',I:'iodine'};
+  document.getElementById('stAtom').textContent=names[activeEl]||activeEl;
+  document.getElementById('stOrder').textContent={1:'single',2:'double',3:'triple'}[activeOrder];
+  const st=document.getElementById('statusLine');
+  if(tool==='erase') st.innerHTML='<b>Erase</b> — click an atom or bond to remove it';
+  else if(tool==='move') st.innerHTML='<b>Move</b> — drag atoms to reposition';
+  else st.innerHTML=`Drawing <b id="stAtom">${names[activeEl]}</b> · <b id="stOrder">${{1:'single',2:'double',3:'triple'}[activeOrder]}</b> bonds`;
+}
+
+/* ---------- templates ---------- */
+function centroid(){ if(!atoms.length) return {x:W/2,y:Hh/2}; return {x:W/2,y:Hh/2}; }
+function placeRing(n,orders){
+  snapshot();
+  const c={x:W/2,y:Hh/2}, r=BOND_LEN/(2*Math.sin(Math.PI/n));
+  const ids=[];
+  for(let i=0;i<n;i++){
+    const ang=Math.PI/180*(360/n*i-90);
+    ids.push(newAtom(c.x+r*Math.cos(ang), c.y+r*Math.sin(ang), 'C').id);
+  }
+  for(let i=0;i<n;i++) newBond(ids[i], ids[(i+1)%n], orders?orders[i]:1);
+  draw(); refreshOutput();
+}
+const RINGS=[
+  {label:'Benzene', n:6, o:[2,1,2,1,2,1], svg:hexSvg(true)},
+  {label:'Cyclohexane', n:6, o:null, svg:hexSvg(false)},
+  {label:'Cyclopentane', n:5, o:null, svg:ngonSvg(5)},
+  {label:'Cyclopropane', n:3, o:null, svg:ngonSvg(3)},
+];
+function hexSvg(aromatic){
+  return `<svg viewBox="0 0 28 28"><polygon points="14,3 24,9 24,19 14,25 4,19 4,9" fill="none" stroke="currentColor" stroke-width="1.6"/>${aromatic?'<circle cx="14" cy="14" r="5.5" fill="none" stroke="currentColor" stroke-width="1.4"/>':''}</svg>`;
+}
+function ngonSvg(n){
+  let pts=[];for(let i=0;i<n;i++){const a=Math.PI/180*(360/n*i-90);pts.push((14+11*Math.cos(a)).toFixed(1)+','+(14+11*Math.sin(a)).toFixed(1));}
+  return `<svg viewBox="0 0 28 28"><polygon points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
+}
+function buildRings(){
+  const g=document.getElementById('ringGrid');
+  RINGS.forEach(R=>{
+    const b=document.createElement('button');
+    b.className='tmpl'; b.innerHTML=`${R.svg}<span>${R.label}</span>`;
+    b.onclick=()=>placeRing(R.n,R.o);
+    g.appendChild(b);
+  });
+}
+
+/* attach a group to selected atom or drop at center */
+const GROUPS=[
+  {label:'–OH', kind:'node', el:'OH'},
+  {label:'–NH₂', kind:'node', el:'NH_2'},
+  {label:'–NO₂', kind:'node', el:'NO_2'},
+  {label:'–OCH₃', kind:'node', el:'OCH_3'},
+  {label:'–CHO', kind:'node', el:'CHO'},
+  {label:'–COOH', kind:'node', el:'COOH'},
+  {label:'–CN', kind:'node', el:'CN'},
+  {label:'C=O', kind:'carbonyl'},
+  {label:'–F', kind:'node', el:'F'},
+  {label:'–Cl', kind:'node', el:'Cl'},
+  {label:'–Br', kind:'node', el:'Br'},
+  {label:'–I', kind:'node', el:'I'},
+];
+function lastAtom(){ return atoms.length? atoms[atoms.length-1] : null; }
+function addGroup(grp){
+  snapshot();
+  // anchor: the hovered atom, else last placed atom, else center
+  const anchor = hover || lastAtom();
+  if(grp.kind==='node'){
+    if(anchor){
+      const ang=openAngle(anchor)*Math.PI/180;
+      const na=newAtom(anchor.x+BOND_LEN*Math.cos(ang), anchor.y+BOND_LEN*Math.sin(ang), grp.el);
+      newBond(anchor.id,na.id,1);
+    } else {
+      newAtom(W/2,Hh/2,grp.el);
+    }
+  } else if(grp.kind==='carbonyl'){
+    if(anchor){
+      const ang=openAngle(anchor)*Math.PI/180;
+      const c=newAtom(anchor.x+BOND_LEN*Math.cos(ang), anchor.y+BOND_LEN*Math.sin(ang),'C');
+      newBond(anchor.id,c.id,1);
+      const o=newAtom(c.x, c.y-BOND_LEN, 'O'); newBond(c.id,o.id,2);
+    } else {
+      const c=newAtom(W/2,Hh/2,'C'); const o=newAtom(W/2,Hh/2-BOND_LEN,'O'); newBond(c.id,o.id,2);
+    }
+  }
+  draw(); refreshOutput();
+}
+function buildGroups(){
+  const g=document.getElementById('groupGrid');
+  GROUPS.forEach(G=>{
+    const b=document.createElement('button');
+    b.className='tmpl'; b.innerHTML=`<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${G.label}</span>`;
+    b.onclick=()=>addGroup(G);
+    g.appendChild(b);
+  });
+}
+
+/* ---------- toolbar buttons ---------- */
+document.getElementById('undoBtn').onclick=undo;
+document.getElementById('copyBtn').onclick=()=>{
+  const raw=document.getElementById('codeOut').dataset.raw||'';
+  if(!raw) return;
+  navigator.clipboard.writeText(raw).then(()=>{
+    const b=document.getElementById('copyBtn');
+    b.classList.add('copied'); b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Copied';
+    setTimeout(()=>{b.classList.remove('copied');b.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy';},1400);
+  });
+};
+document.getElementById('skeletalToggle').onchange=e=>{ skeletal=e.target.checked; draw(); refreshOutput(); };
+document.getElementById('exampleBtn').onclick=loadExample;
+
+function loadExample(){            // toluene
+  snapshot(); atoms=[]; bonds=[];
+  const c={x:W/2-30,y:Hh/2}, r=BOND_LEN;
+  const ids=[];
+  for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-90);ids.push(newAtom(c.x+r*Math.cos(a),c.y+r*Math.sin(a),'C').id);}
+  const ord=[2,1,2,1,2,1];
+  for(let i=0;i<6;i++) newBond(ids[i],ids[(i+1)%6],ord[i]);
+  const top=atoms.find(a=>a.id===ids[0]);
+  newBond(ids[0], newAtom(top.x, top.y-BOND_LEN,'C').id,1);
+  draw(); refreshOutput();
+}
+
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+  else if(e.key==='Delete'||e.key==='Backspace'){ tool='erase'; document.querySelectorAll('.tool').forEach(x=>x.setAttribute('aria-pressed',x.dataset.tool==='erase')); updateStatus(); }
+});
+
+/* =================================================================
+   View switching
+   ================================================================= */
+document.querySelector('.tabs').addEventListener('click',e=>{
+  const t=e.target.closest('.tab'); if(!t) return;
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected', x===t));
+  const v=t.dataset.view;
+  document.getElementById('view-build').style.display = v==='build'?'grid':'none';
+  document.getElementById('view-library').style.display = v==='library'?'grid':'none';
+  if(v==='build') setTimeout(resize,0);
+});
+
+/* =================================================================
+   Library  (each compound = build structure; chemfig from same engine)
+   ================================================================= */
+function zig(els, orders, x0, y0, start){
+  // line-angle chain; start = starting angle in deg, alternating ±, els length = #atoms
+  const atomsL=[], bondsL=[]; let x=x0,y=y0,ang=start;
+  atomsL.push({id:0,x,y,element:els[0]});
+  for(let i=1;i<els.length;i++){
+    const rad=ang*Math.PI/180; x+=BOND_LEN*Math.cos(rad); y+=BOND_LEN*Math.sin(rad);
+    atomsL.push({id:i,x,y,element:els[i]});
+    bondsL.push({a1:i-1,a2:i,order:orders[i-1]});
+    ang = (ang===start)? start+ ((start<0)?60:-60)*0 : ang; // placeholder
+    ang = (i%2)? -Math.abs(start): Math.abs(start);
+  }
+  return {atoms:atomsL,bonds:bondsL};
+}
+function ringStruct(n,orders,subs){
+  const r=BOND_LEN/(2*Math.sin(Math.PI/n)); const atomsL=[],bondsL=[];
+  for(let i=0;i<n;i++){const a=Math.PI/180*(360/n*i-90);atomsL.push({id:i,x:120+r*Math.cos(a),y:120+r*Math.sin(a),element:'C'});}
+  for(let i=0;i<n;i++) bondsL.push({a1:i,a2:(i+1)%n,order:orders?orders[i]:1});
+  let nid=n;
+  (subs||[]).forEach(s=>{
+    const base=atomsL[s.v]; const a=Math.PI/180*(360/n*s.v-90);
+    atomsL.push({id:nid,x:base.x+BOND_LEN*Math.cos(a),y:base.y+BOND_LEN*Math.sin(a),element:s.el});
+    bondsL.push({a1:s.v,a2:nid,order:s.order||1}); nid++;
+  });
+  return {atoms:atomsL,bonds:bondsL};
+}
+function chainStruct(spec){
+  // spec: array of {el} and bonds inferred sequential; supports branch via 'branch'
+  const atomsL=[],bondsL=[]; let x=80,y=120,ang=-30;
+  spec.forEach((s,i)=>{
+    if(i===0){ atomsL.push({id:0,x,y,element:s.el}); return; }
+    ang = (i%2)? 30 : -30;
+    const rad=ang*Math.PI/180; x+=BOND_LEN*Math.cos(rad); y+=BOND_LEN*Math.sin(rad);
+    atomsL.push({id:i,x,y,element:s.el});
+    bondsL.push({a1:i-1,a2:i,order:s.order||1});
+  });
+  return {atoms:atomsL,bonds:bondsL};
+}
+
+const LIBRARY=[
+  // ---- Alkanes ----
+  {cat:'Alkanes',name:'Methane',formula:'CH₄',canonical:'\\chemfig{C(-[2]H)(-[6]H)(-[0]H)-[4]H}',build:()=>({atoms:[{id:0,x:120,y:120,element:'C'},{id:1,x:120,y:74,element:'H'},{id:2,x:120,y:166,element:'H'},{id:3,x:166,y:120,element:'H'},{id:4,x:74,y:120,element:'H'}],bonds:[{a1:0,a2:1,order:1},{a1:0,a2:2,order:1},{a1:0,a2:3,order:1},{a1:0,a2:4,order:1}]}),skel:false},
+  {cat:'Alkanes',name:'Ethane',formula:'C₂H₆',build:()=>chainStruct([{el:'C'},{el:'C'}])},
+  {cat:'Alkanes',name:'Propane',formula:'C₃H₈',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'C'}])},
+  {cat:'Alkanes',name:'Butane',formula:'C₄H₁₀',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'C'},{el:'C'}])},
+  {cat:'Alkanes',name:'Pentane',formula:'C₅H₁₂',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'C'},{el:'C'},{el:'C'}])},
+  {cat:'Alkanes',name:'Hexane',formula:'C₆H₁₄',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'C'},{el:'C'},{el:'C'},{el:'C'}])},
+  {cat:'Alkanes',name:'Isobutane',formula:'C₄H₁₀',build:()=>({atoms:[{id:0,x:80,y:140,element:'C'},{id:1,x:120,y:117,element:'C'},{id:2,x:160,y:140,element:'C'},{id:3,x:120,y:71,element:'C'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:1},{a1:1,a2:3,order:1}]})},
+
+  // ---- Alkenes / alkynes ----
+  {cat:'Unsaturated',name:'Ethylene',formula:'C₂H₄',canonical:'\\chemfig{H_2C=CH_2}',build:()=>chainStruct([{el:'C'},{el:'C',order:2}])},
+  {cat:'Unsaturated',name:'Propene',formula:'C₃H₆',build:()=>chainStruct([{el:'C'},{el:'C',order:2},{el:'C'}])},
+  {cat:'Unsaturated',name:'1,3-Butadiene',formula:'C₄H₆',build:()=>chainStruct([{el:'C'},{el:'C',order:2},{el:'C'},{el:'C',order:2}])},
+  {cat:'Unsaturated',name:'Acetylene',formula:'C₂H₂',canonical:'\\chemfig{H-C~C-H}',build:()=>({atoms:[{id:0,x:90,y:120,element:'C'},{id:1,x:150,y:120,element:'C'}],bonds:[{a1:0,a2:1,order:3}]})},
+  {cat:'Unsaturated',name:'Propyne',formula:'C₃H₄',build:()=>({atoms:[{id:0,x:80,y:120,element:'C'},{id:1,x:130,y:120,element:'C'},{id:2,x:180,y:120,element:'C'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:3}]})},
+
+  // ---- Oxygen ----
+  {cat:'Alcohols & ethers',name:'Methanol',formula:'CH₄O',build:()=>chainStruct([{el:'C'},{el:'OH'}])},
+  {cat:'Alcohols & ethers',name:'Ethanol',formula:'C₂H₆O',canonical:'\\chemfig{-[:30]-[:-30]OH}',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'OH'}])},
+  {cat:'Alcohols & ethers',name:'Isopropanol',formula:'C₃H₈O',build:()=>({atoms:[{id:0,x:80,y:140,element:'C'},{id:1,x:120,y:117,element:'C'},{id:2,x:160,y:140,element:'C'},{id:3,x:120,y:71,element:'OH'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:1},{a1:1,a2:3,order:1}]})},
+  {cat:'Alcohols & ethers',name:'Dimethyl ether',formula:'C₂H₆O',build:()=>chainStruct([{el:'C'},{el:'O'},{el:'C'}])},
+  {cat:'Alcohols & ethers',name:'Diethyl ether',formula:'C₄H₁₀O',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'O'},{el:'C'},{el:'C'}])},
+
+  // ---- Carbonyls / acids ----
+  {cat:'Carbonyls & acids',name:'Formaldehyde',formula:'CH₂O',canonical:'\\chemfig{H_2C=O}',build:()=>({atoms:[{id:0,x:100,y:120,element:'C'},{id:1,x:150,y:120,element:'O'}],bonds:[{a1:0,a2:1,order:2}]})},
+  {cat:'Carbonyls & acids',name:'Acetaldehyde',formula:'C₂H₄O',build:()=>({atoms:[{id:0,x:80,y:130,element:'C'},{id:1,x:120,y:107,element:'C'},{id:2,x:120,y:61,element:'O'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:2}]})},
+  {cat:'Carbonyls & acids',name:'Acetone',formula:'C₃H₆O',build:()=>({atoms:[{id:0,x:80,y:140,element:'C'},{id:1,x:120,y:117,element:'C'},{id:2,x:160,y:140,element:'C'},{id:3,x:120,y:71,element:'O'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:1},{a1:1,a2:3,order:2}]})},
+  {cat:'Carbonyls & acids',name:'Formic acid',formula:'CH₂O₂',build:()=>({atoms:[{id:0,x:90,y:120,element:'C'},{id:1,x:90,y:74,element:'O'},{id:2,x:140,y:140,element:'OH'}],bonds:[{a1:0,a2:1,order:2},{a1:0,a2:2,order:1}]})},
+  {cat:'Carbonyls & acids',name:'Acetic acid',formula:'C₂H₄O₂',canonical:'\\chemfig{-[:30](=[:90]O)-[:-30]OH}',build:()=>({atoms:[{id:0,x:80,y:130,element:'C'},{id:1,x:120,y:107,element:'C'},{id:2,x:120,y:61,element:'O'},{id:3,x:160,y:130,element:'OH'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:2},{a1:1,a2:3,order:1}]})},
+
+  // ---- Nitrogen ----
+  {cat:'Nitrogen',name:'Methylamine',formula:'CH₅N',build:()=>chainStruct([{el:'C'},{el:'NH_2'}])},
+  {cat:'Nitrogen',name:'Ethylamine',formula:'C₂H₇N',build:()=>chainStruct([{el:'C'},{el:'C'},{el:'NH_2'}])},
+  {cat:'Nitrogen',name:'Acetonitrile',formula:'C₂H₃N',build:()=>({atoms:[{id:0,x:80,y:120,element:'C'},{id:1,x:130,y:120,element:'C'},{id:2,x:180,y:120,element:'N'}],bonds:[{a1:0,a2:1,order:1},{a1:1,a2:2,order:3}]})},
+
+  // ---- Aromatics ----
+  {cat:'Aromatics',name:'Benzene',formula:'C₆H₆',canonical:'\\chemfig{*6(-=-=-=)}',build:()=>ringStruct(6,[2,1,2,1,2,1])},
+  {cat:'Aromatics',name:'Toluene',formula:'C₇H₈',build:()=>ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'C'}])},
+  {cat:'Aromatics',name:'Phenol',formula:'C₆H₆O',build:()=>ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'OH'}])},
+  {cat:'Aromatics',name:'Aniline',formula:'C₆H₇N',build:()=>ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'NH_2'}])},
+  {cat:'Aromatics',name:'Benzaldehyde',formula:'C₇H₆O',build:()=>ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'CHO'}])},
+  {cat:'Aromatics',name:'Benzoic acid',formula:'C₇H₆O₂',build:()=>ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'COOH'}])},
+  {cat:'Aromatics',name:'Nitrobenzene',formula:'C₆H₅NO₂',build:()=>ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'NO_2'}])},
+  {cat:'Aromatics',name:'Styrene',formula:'C₈H₈',build:()=>{const r=ringStruct(6,[2,1,2,1,2,1],[{v:0,el:'C'}]);const last=r.atoms.length-1;const base=r.atoms[last];r.atoms.push({id:r.atoms.length,x:base.x-BOND_LEN*0.87,y:base.y-BOND_LEN*0.5,element:'C'});r.bonds.push({a1:last,a2:r.atoms.length-1,order:2});return r;}},
+  {cat:'Aromatics',name:'Pyridine',formula:'C₅H₅N',build:()=>{const r=ringStruct(6,[2,1,2,1,2,1]);r.atoms[0].element='N';return r;}},
+
+  // ---- Rings ----
+  {cat:'Saturated rings',name:'Cyclopropane',formula:'C₃H₆',canonical:'\\chemfig{*3(---)}',build:()=>ringStruct(3)},
+  {cat:'Saturated rings',name:'Cyclobutane',formula:'C₄H₈',canonical:'\\chemfig{*4(----)}',build:()=>ringStruct(4)},
+  {cat:'Saturated rings',name:'Cyclopentane',formula:'C₅H₁₀',canonical:'\\chemfig{*5(-----)}',build:()=>ringStruct(5)},
+  {cat:'Saturated rings',name:'Cyclohexane',formula:'C₆H₁₂',canonical:'\\chemfig{*6(------)}',build:()=>ringStruct(6)},
+  {cat:'Saturated rings',name:'Cyclohexene',formula:'C₆H₁₀',build:()=>ringStruct(6,[2,1,1,1,1,1])},
+
+  // ---- Halocarbons ----
+  {cat:'Halocarbons',name:'Chloromethane',formula:'CH₃Cl',build:()=>chainStruct([{el:'C'},{el:'Cl'}])},
+  {cat:'Halocarbons',name:'Dichloromethane',formula:'CH₂Cl₂',build:()=>({atoms:[{id:0,x:120,y:120,element:'C'},{id:1,x:80,y:97,element:'Cl'},{id:2,x:160,y:97,element:'Cl'}],bonds:[{a1:0,a2:1,order:1},{a1:0,a2:2,order:1}]})},
+  {cat:'Halocarbons',name:'Chloroform',formula:'CHCl₃',build:()=>({atoms:[{id:0,x:120,y:120,element:'C'},{id:1,x:80,y:97,element:'Cl'},{id:2,x:160,y:97,element:'Cl'},{id:3,x:120,y:166,element:'Cl'}],bonds:[{a1:0,a2:1,order:1},{a1:0,a2:2,order:1},{a1:0,a2:3,order:1}]})},
+];
+
+function chemfigFor(c){
+  if(c.canonical) return c.canonical;
+  const s=c.build();
+  return generateChemfig(s.atoms,s.bonds,{skeletal:c.skel!==false}).code;
+}
+let libSelected=null;
+function renderLibList(filter){
+  const list=document.getElementById('libList'); list.innerHTML='';
+  const q=(filter||'').trim().toLowerCase();
+  const matches=LIBRARY.filter(c=> !q || c.name.toLowerCase().includes(q) || c.formula.toLowerCase().replace(/[₀₁₂₃₄₅₆₇₈₉]/g,d=>'0123456789'['₀₁₂₃₄₅₆₇₈₉'.indexOf(d)]).includes(q.replace(/[^a-z0-9]/g,'')) || c.cat.toLowerCase().includes(q));
+  document.getElementById('libCount').textContent=`${matches.length} compound${matches.length===1?'':'s'}`;
+  let cat=null;
+  matches.forEach(c=>{
+    if(c.cat!==cat){ cat=c.cat; const h=document.createElement('div'); h.className='eyebrow lib-cat'; h.textContent=cat; list.appendChild(h); }
+    const it=document.createElement('div'); it.className='lib-item'; it.setAttribute('aria-selected', libSelected===c.name);
+    it.innerHTML=`<div class="thumb">${miniStruct(c)}</div><div class="meta"><div class="nm">${c.name}</div><div class="fm">${c.formula}</div></div>`;
+    it.onclick=()=>{ libSelected=c.name; renderLibList(document.getElementById('libSearch').value); showDetail(c); };
+    list.appendChild(it);
+  });
+  if(!matches.length){ list.innerHTML='<div style="padding:30px;text-align:center;color:#8c8475;font-size:13px">No match. Try a different name or build it on the Build tab.</div>'; }
+}
+function miniStruct(c){
+  const s=c.build();
+  return structSvg(s.atoms,s.bonds, c.skel!==false, 48, '#2D2A24');
+}
+function structSvg(A,B,skel,size,col){
+  let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+  A.forEach(a=>{minx=Math.min(minx,a.x);miny=Math.min(miny,a.y);maxx=Math.max(maxx,a.x);maxy=Math.max(maxy,a.y);});
+  const w=maxx-minx||1,h=maxy-miny||1,pad=10,scale=Math.min((size-pad*2)/w,(size-pad*2)/h);
+  const tx=x=>(x-minx)*scale+(size-w*scale)/2, ty=y=>(y-miny)*scale+(size-h*scale)/2;
+  const vis=a=>!(a.element==='C'&&skel&&B.some(b=>b.a1===a.id||b.a2===a.id));
+  let s=`<svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`;
+  B.forEach(b=>{const p=A.find(a=>a.id===b.a1),q=A.find(a=>a.id===b.a2);if(!p||!q)return;
+    const ax=tx(p.x),ay=ty(p.y),bx=tx(q.x),by=ty(q.y);
+    const ang=Math.atan2(by-ay,bx-ax),nx=-Math.sin(ang)*1.6,ny=Math.cos(ang)*1.6;
+    if(b.order===1) s+=`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="1.4"/>`;
+    else if(b.order===2) s+=`<line x1="${ax+nx}" y1="${ay+ny}" x2="${bx+nx}" y2="${by+ny}" stroke="${col}" stroke-width="1.2"/><line x1="${ax-nx}" y1="${ay-ny}" x2="${bx-nx}" y2="${by-ny}" stroke="${col}" stroke-width="1.2"/>`;
+    else s+=`<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${col}" stroke-width="1.1"/><line x1="${ax+nx*1.6}" y1="${ay+ny*1.6}" x2="${bx+nx*1.6}" y2="${by+ny*1.6}" stroke="${col}" stroke-width="1.1"/><line x1="${ax-nx*1.6}" y1="${ay-ny*1.6}" x2="${bx-nx*1.6}" y2="${by-ny*1.6}" stroke="${col}" stroke-width="1.1"/>`;
+  });
+  A.forEach(a=>{ if(!vis(a)) return; const lab=a.element.replace(/_(\d)/,'$1');
+    s+=`<text x="${tx(a.x)}" y="${ty(a.y)}" font-family="Space Grotesk,sans-serif" font-size="${size>80?13:9}" font-weight="600" text-anchor="middle" dominant-baseline="central" fill="${cssVar(CPK[a.element]||'--el-C')||col}">${lab}</text>`;
+  });
+  return s+'</svg>';
+}
+function showDetail(c){
+  const d=document.getElementById('libDetail');
+  const code=chemfigFor(c);
+  d.innerHTML=`
+    <div class="ld-head"><div class="nm">${c.name}</div><div class="fm">${c.formula} · ${c.cat}</div></div>
+    <div class="ld-preview">${structSvg(c.build().atoms,c.build().bonds,c.skel!==false,170,'#2D2A24')}</div>
+    <div class="code-box" style="margin:0 24px;">
+      <div class="cb-top"><span class="eyebrow">chemfig source</span>
+        <button class="copy" id="libCopy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy</button></div>
+      <pre class="code">${highlight(code)}</pre>
+    </div>
+    <div class="ld-actions" style="margin-top:18px">
+      <button class="btn primary" id="libEdit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l5-1L19 9a2.8 2.8 0 0 0-4-4L5 15l-1 5z"/></svg>Open in builder</button>
+    </div>
+    <div class="preamble" style="margin:18px 24px 30px">Needs <code>\\usepackage{chemfig}</code>. ${c.canonical?'Shown in chemfig’s compact ring shorthand.':'Generated with explicit bond angles — robust and editable.'}</div>`;
+  document.getElementById('libCopy').onclick=()=>{
+    navigator.clipboard.writeText(code).then(()=>{const b=document.getElementById('libCopy');b.classList.add('copied');b.innerHTML='Copied';setTimeout(()=>renderLibList(document.getElementById('libSearch').value)||showDetail(c),1200);});
+  };
+  document.getElementById('libEdit').onclick=()=>{
+    snapshot();
+    const s=c.build();
+    atoms=s.atoms.map((a,i)=>({id:'a'+i,x:a.x+W/2-130,y:a.y+Hh/2-120,element:a.element}));
+    bonds=s.bonds.map((b,i)=>({id:'b'+i,a1:'a'+b.a1,a2:'a'+b.a2,order:b.order}));
+    aid=atoms.length; bid=bonds.length;
+    document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x.dataset.view==='build'));
+    document.getElementById('view-build').style.display='grid';
+    document.getElementById('view-library').style.display='none';
+    setTimeout(()=>{resize();refreshOutput();},0);
+  };
+}
+document.getElementById('libSearch').addEventListener('input',e=>renderLibList(e.target.value));
+
+/* =================================================================
+   init
+   ================================================================= */
+buildElGrid(); buildRings(); buildGroups(); renderLibList('');
+updateStatus(); resize(); refreshOutput();
+</script>
+</body>
+</html>
