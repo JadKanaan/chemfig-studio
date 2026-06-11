@@ -997,6 +997,14 @@
                     <span class="track"><span class="knob"></span></span>
                     <span class="lbl">Skeletal</span>
                 </label>
+                <label
+                    class="toggle"
+                    title="Keep hydrogens you draw explicitly (e.g. a C–H you add by hand). Turn off to hide C–H hydrogens in skeletal mode."
+                >
+                    <input type="checkbox" id="showHToggle" checked />
+                    <span class="track"><span class="knob"></span></span>
+                    <span class="lbl">Show H</span>
+                </label>
             </header>
 
             <!-- ============ BUILD VIEW ============ -->
@@ -1428,6 +1436,7 @@
             function generateChemfig(atoms, bonds, opts) {
                 opts = opts || {};
                 const skeletal = opts.skeletal !== false;
+                const showH = opts.showH !== false; // keep explicitly drawn H by default
                 let A = atoms.map((a) => ({ ...a }));
                 let B = bonds.map((b, i) => ({ ...b, _bid: i }));
                 const eltOf = (id) => {
@@ -1435,7 +1444,7 @@
                     return a ? a.element : null;
                 };
 
-                if (skeletal) {
+                if (skeletal && !showH) {
                     const remove = new Set();
                     A.forEach((a) => {
                         if (a.element === "H" && !a.charge) {
@@ -1721,6 +1730,7 @@
                 activeOrder = 1,
                 tool = "draw";
             let skeletal = true;
+            let showH = true; // keep explicitly drawn hydrogens in the output
             let chemScale = 1; // uniform output scale via \scalebox
             let undoStack = [];
             let selected = null; // currently selected atom (for groups / charge)
@@ -2366,7 +2376,7 @@
 
             /* ---------- output ---------- */
             function refreshOutput() {
-                const res = generateChemfig(atoms, bonds, { skeletal });
+                const res = generateChemfig(atoms, bonds, { skeletal, showH });
                 const pre = document.getElementById("codeOut");
                 let code = res.code;
                 if (code && Math.abs(chemScale - 1) > 1e-6) {
@@ -2713,6 +2723,10 @@
             document.getElementById("skeletalToggle").onchange = (e) => {
                 skeletal = e.target.checked;
                 draw();
+                refreshOutput();
+            };
+            document.getElementById("showHToggle").onchange = (e) => {
+                showH = e.target.checked;
                 refreshOutput();
             };
             document.getElementById("scaleInput").onchange = (e) => {
