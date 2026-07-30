@@ -1486,7 +1486,7 @@
                 if (skeletal) {
                     const remove = new Set();
                     A.forEach((a) => {
-                        if (a.element === "H" && !a.charge) {
+                        if (a.element === "H" && !a.charge && !a.explicit) {
                             const nb = B.filter(
                                 (b) => b.a1 === a.id || b.a2 === a.id,
                             ).map((b) => (b.a1 === a.id ? b.a2 : b.a1));
@@ -1860,7 +1860,10 @@
 
             /* ---------- model helpers ---------- */
             function newAtom(x, y, el) {
-                const a = { id: "a" + aid++, x, y, element: el || activeEl };
+                // `explicit` marks an atom the user placed by hand. The skeletal
+                // filter in generateChemfig uses it to keep hand-drawn hydrogens
+                // (e.g. the aldehyde H) that it would otherwise strip.
+                const a = { id: "a" + aid++, x, y, element: el || activeEl, explicit: true };
                 atoms.push(a);
                 return a;
             }
