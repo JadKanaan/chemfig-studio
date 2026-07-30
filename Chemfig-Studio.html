@@ -1237,6 +1237,29 @@
                                 2+
                             </button>
                         </div>
+                        <div class="charge-grid" id="radicalGrid">
+                            <button
+                                class="charge"
+                                data-radical="0"
+                                title="No radical"
+                            >
+                                –
+                            </button>
+                            <button
+                                class="charge"
+                                data-radical="dot"
+                                title="Radical (one unpaired electron). Combine with a charge for a radical cation or anion."
+                            >
+                                &#8226;
+                            </button>
+                            <button
+                                class="charge"
+                                data-radical="dot2"
+                                title="Diradical / carbene (two unpaired electrons)"
+                            >
+                                &#8226;&#8226;
+                            </button>
+                        </div>
                     </div>
 
                     <div class="group">
@@ -1486,7 +1509,7 @@
                 if (skeletal) {
                     const remove = new Set();
                     A.forEach((a) => {
-                        if (a.element === "H" && !a.charge && !a.explicit) {
+                        if (a.element === "H" && !a.charge && !a.radical && !a.explicit) {
                             const nb = B.filter(
                                 (b) => b.a1 === a.id || b.a2 === a.id,
                             ).map((b) => (b.a1 === a.id ? b.a2 : b.a1));
@@ -1593,14 +1616,26 @@
                     })(root.id, -1);
 
                     const seen = new Set();
-                    const chargeTeX = (c) =>
-                        c
-                            ? "^{" +
-                              c
+                    // symbols an atom carries: formal charge and/or radical dots
+                    const decorTeX = (a) => {
+                        const c = a.charge
+                            ? a.charge
                                   .replace(/\+/g, "\\oplus")
-                                  .replace(/-/g, "\\ominus") +
-                              "}"
+                                  .replace(/-/g, "\\ominus")
                             : "";
+                        const r =
+                            a.radical === "dot2"
+                                ? "\\bullet\\bullet"
+                                : a.radical === "dot"
+                                  ? "\\bullet"
+                                  : "";
+                        return c + r;
+                    };
+                    // atoms that print a symbol carry the decoration as a superscript
+                    const chargeTeX = (a) => {
+                        const d = decorTeX(a);
+                        return d ? "^{" + d + "}" : "";
+                    };
                     // reversed spellings for terminal groups, so the connecting
                     // (hetero)atom can be written on the side facing its bond
                     const REV = {
@@ -1618,7 +1653,11 @@
                         // skeletal carbon vertex: no symbol when neutral; when
                         // charged, keep the vertex bare and attach only the charge
                         // (an empty atom {} so the bond still meets a clean vertex)
-                        if (skelC) return a.charge ? "{}" + chargeTeX(a.charge) : "";
+                        // A skeletal carbon stays a bare vertex even when charged
+                        // or radical: printing the symbol here would replace the
+                        // vertex itself. The symbol is floated alongside instead,
+                        // by decorBranch() below.
+                        if (skelC) return decorTeX(a) ? "{}" : "";
                         let base = a.element;
                         // For a terminal multi-atom group, chemfig splits the label
                         // and lays the pieces out left-to-right, always attaching the
@@ -1638,7 +1677,39 @@
                             if (Math.cos(dir) > 1e-4)
                                 base = "{" + REV[a.element] + "}";
                         }
-                        return base + chargeTeX(a.charge);
+                        return base + chargeTeX(a);
+                    };
+                    // Charge/radical on a bare vertex is attached by a zero-width
+                    // invisible bond, so the skeleton's vertex is preserved and the
+                    // symbol simply sits next to it.
+                    const decorBranch = (id) => {
+                        const a = byId[id];
+                        if (!a) return "";
+                        const d = decorTeX(a);
+                        if (!d || atomLabel(a) !== "{}") return "";
+                        const taken = (adj[id] || []).map((e) => {
+                            const n = byId[e.to];
+                            return (
+                                (Math.atan2(-(n.y - a.y), n.x - a.x) * 180) /
+                                Math.PI
+                            );
+                        });
+                        let best = 90,
+                            bestGap = -1;
+                        for (let ang = -180; ang < 180; ang += 5) {
+                            let gap = 360;
+                            taken.forEach((t) => {
+                                gap = Math.min(
+                                    gap,
+                                    Math.abs(((ang - t + 540) % 360) - 180),
+                                );
+                            });
+                            if (gap > bestGap) {
+                                bestGap = gap;
+                                best = ang;
+                            }
+                        }
+                        return `(-[:${Math.round(best)},0.4,,,draw=none]{\\scriptstyle ${d}})`;
                     };
                     const ringTok = (id) => {
                         const m = ringMark[id];
@@ -1663,7 +1734,7 @@
                     };
                     function emit(u, fromBid) {
                         seen.add(u);
-                        let s = atomLabel(byId[u]) + ringTok(u);
+                        let s = atomLabel(byId[u]) + ringTok(u) + decorBranch(u);
                         const kids = orderedNb(u).filter(
                             (e) =>
                                 e.bid !== fromBid &&
@@ -1804,7 +1875,10 @@
                     ? c.replace(/\+/g, "\u2295").replace(/-/g, "\u2296")
                     : "";
             }
-            function parseLabel(label, charge) {
+            function radGlyph(r) {
+                return r === "dot2" ? "\u2022\u2022" : r === "dot" ? "\u2022" : "";
+            }
+            function parseLabel(label, charge, radical) {
                 const segs = [];
                 const str = label || "";
                 for (let i = 0; i < str.length; i++) {
@@ -1825,7 +1899,8 @@
                         segs.push({ t: ch, k: "base" });
                     }
                 }
-                if (charge) segs.push({ t: chargeGlyph(charge), k: "sup" });
+                const dec = chargeGlyph(charge) + radGlyph(radical);
+                if (dec) segs.push({ t: dec, k: "sup" });
                 return segs;
             }
 
@@ -2095,7 +2170,8 @@
                 const isHov = hover && hover.id === a.id;
                 // a charged skeletal-carbon vertex stays a bare vertex (no "C"),
                 // we just float the charge next to it
-                const bareCharged = lab === null && a.charge;
+                const bareDecor = chargeGlyph(a.charge) + radGlyph(a.radical);
+                const bareCharged = lab === null && bareDecor;
                 const vertexDot = () => {
                     if (isSel) {
                         ctx.fillStyle = cssVar("--amber");
@@ -2114,7 +2190,7 @@
                         ctx.fill();
                     }
                 };
-                if (lab === null && !a.charge) {
+                if (lab === null && !bareDecor) {
                     vertexDot();
                     return;
                 }
@@ -2128,11 +2204,11 @@
                         : isHov
                           ? cssVar("--accent")
                           : colorForLabel("C");
-                    ctx.fillText(chargeGlyph(a.charge), a.x + 5, a.y - 9);
+                    ctx.fillText(bareDecor, a.x + 5, a.y - 9);
                     return;
                 }
                 // build segments and measure
-                const segs = parseLabel(lab || "", a.charge);
+                const segs = parseLabel(lab || "", a.charge, a.radical);
                 const BASE = 16,
                     SMALL = 10.5;
                 let total = 0;
@@ -2633,6 +2709,25 @@
                     snapshot();
                     const c = b.dataset.charge;
                     selected.charge = c === "0" ? null : c;
+                    draw();
+                    refreshOutput();
+                });
+
+            /* ---------- radicals ---------- */
+            document
+                .getElementById("radicalGrid")
+                .addEventListener("click", (e) => {
+                    const b = e.target.closest(".charge");
+                    if (!b) return;
+                    if (!selected) {
+                        const st = document.getElementById("statusLine");
+                        st.innerHTML =
+                            "<b>Select an atom first</b> — click a vertex, then choose a radical";
+                        return;
+                    }
+                    snapshot();
+                    const r = b.dataset.radical;
+                    selected.radical = r === "0" ? null : r;
                     draw();
                     refreshOutput();
                 });
@@ -4049,7 +4144,10 @@
                         const q = parseCharge(a.charge);
                         if (a.element === "H") {
                             attachOf[a.id] = nodes.length;
-                            nodes.push({ el: "H", hExpl: 0, charge: q, isH: true });
+                            nodes.push({
+                                el: "H", hExpl: 0, charge: q, isH: true,
+                                rad: a.radical === "dot2" ? 2 : a.radical === "dot" ? 1 : 0,
+                            });
                             return;
                         }
                         const f = expandLabel(a.element), map = [];
@@ -4063,6 +4161,8 @@
                         f.bonds.forEach((fb) =>
                             edges.push({ a: map[fb.i], b: map[fb.j], order: fb.order }));
                         if (!f.selfCharged) nodes[map[f.attach]].charge += q;
+                        nodes[map[f.attach]].rad =
+                            a.radical === "dot2" ? 2 : a.radical === "dot" ? 1 : 0;
                         attachOf[a.id] = map[f.attach];
                     });
                     bonds.forEach((b) => {
@@ -4093,7 +4193,11 @@
                         // an explicit H node *is* the hydrogen; it carries no H of its own
                         n.h = n.unknown || n.isH
                             ? 0
-                            : h + Math.max(0, valence(n.el, n.charge) - sum - h);
+                            : h +
+                              Math.max(
+                                  0,
+                                  valence(n.el, n.charge) - sum - h - (n.rad || 0),
+                              );
                     });
 
                     // drop folded H, renumber
@@ -4105,7 +4209,7 @@
                     });
                     const H = keep.map((n) => ({
                         el: n.el, h: n.h, charge: n.charge, bondSum: n.bondSum,
-                        unknown: n.unknown, raw: n.raw, nb: [],
+                        rad: n.rad || 0, unknown: n.unknown, raw: n.raw, nb: [],
                     }));
                     edges.forEach((e, i) => {
                         if (nodes[e.a].fold || nodes[e.b].fold) return;
@@ -4120,7 +4224,8 @@
                 function atomToken(n) {
                     if (n.unknown) return "*";
                     const q = n.charge || 0, model = ORGANIC[n.el];
-                    if (model && q === 0) {
+                    // a radical never fits the organic subset: force bracket form
+                    if (model && q === 0 && !n.rad) {
                         let v = null;
                         for (let k = 0; k < model.length; k++)
                             if (model[k] >= n.bondSum) { v = model[k]; break; }
@@ -4328,7 +4433,7 @@
                 A.forEach((a) => {
                     if (!vis(a)) return;
                     const fs = size > 80 ? 13 : 9;
-                    const segs = parseLabel(a.element, a.charge);
+                    const segs = parseLabel(a.element, a.charge, a.radical);
                     const fill = cssVar(CPK[a.element] || "") || "" || col;
                     const inner = segs
                         .map((sg) => {
