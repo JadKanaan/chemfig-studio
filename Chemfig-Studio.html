@@ -1636,12 +1636,30 @@
                     })(root.id, -1);
 
                     const seen = new Set();
+                    // \oplus and \ominus set the sign as a font glyph at the font's
+                    // script size, which makes the + and - inside the ring hairline
+                    // thin — that is what fades out in print, more than the ring
+                    // itself. Both the ring and the sign are therefore stroked as
+                    // TikZ paths at a weight fixed in points, so neither thins out
+                    // with the script size. chemfig already loads TikZ, so this
+                    // needs no extra package, and \scalebox still scales it.
+                    // Geometry follows \oplus: the ring stays hairline-thin and the
+                    // sign's arms run the full diameter so they meet it. Only the
+                    // arms are heavy — they are the part that has to stay readable.
+                    const circled = (sign) =>
+                        "\\tikz[baseline=-.5ex]{\\draw[line width=.3pt] (0,0) " +
+                        "circle[radius=1.4mm];\\draw[line width=.8pt] " +
+                        "(-1.4mm,0) -- (1.4mm,0)" +
+                        (sign === "+" ? " (0,-1.4mm) -- (0,1.4mm)" : "") +
+                        ";}";
                     // symbols an atom carries: formal charge and/or radical dots
                     const decorTeX = (a) => {
+                        // One pass over both signs: the emitted TikZ is full of "-"
+                        // of its own (baseline=-.5ex, the -- path operators), so a
+                        // second, separate pass for "-" would chew through the "+"
+                        // glyph it had just written.
                         const c = a.charge
-                            ? a.charge
-                                  .replace(/\+/g, "\\oplus")
-                                  .replace(/-/g, "\\ominus")
+                            ? a.charge.replace(/[+-]/g, (s) => circled(s))
                             : "";
                         const r =
                             a.radical === "dot2"
@@ -1740,7 +1758,9 @@
                                 best = ang;
                             }
                         }
-                        return `(-[:${Math.round(best)},0.4,,,draw=none]{\\scriptstyle ${d}})`;
+                        // 0.45 rather than 0.4: the drawn charge is a little wider
+                        // than \ominus was, and needs the extra clearance
+                        return `(-[:${Math.round(best)},0.45,,,draw=none]{\\scriptstyle ${d}})`;
                     };
                     const ringTok = (id) => {
                         const m = ringMark[id];
