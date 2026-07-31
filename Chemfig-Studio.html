@@ -989,7 +989,7 @@
                     </svg>
                     <div>
                         <h1>Chemfig Studio</h1>
-                        <div class="sub">draw a structure → get the LaTeX &amp; the SMILES</div>
+                        <div class="sub">draw a structure → get the LaTeX &amp; the SMILES <span style="opacity:.55">· build 2026-07-31b</span></div>
                     </div>
                 </div>
                 <div class="tabs" role="tablist">
@@ -1667,6 +1667,17 @@
                         COOH: "HOOC",
                         CN: "NC",
                     };
+                    // chemfig claims ( ) [ ] < > = ~ - * ! ? @ for its own syntax,
+                    // so a label such as "(C_6H_5)_3" is read as a branch and a
+                    // stray bond instead of being typeset. Hiding each offending
+                    // character in its own brace group keeps it out of chemfig's
+                    // parser while leaving the label split into its normal atom
+                    // groups — so the bond still meets the end of the label rather
+                    // than crossing over the middle of it (which is what wrapping
+                    // the whole label in one brace group would do).
+                    const CHEMFIG_SPECIAL = /[()[\]<>=~*!?@-]/g;
+                    const protectSpecials = (s) =>
+                        s.replace(CHEMFIG_SPECIAL, (c) => "{" + c + "}");
                     const atomLabel = (a) => {
                         const skelC =
                             skeletal && a.element === "C" && degree[a.id] > 0;
@@ -1697,7 +1708,7 @@
                             if (Math.cos(dir) > 1e-4)
                                 base = "{" + REV[a.element] + "}";
                         }
-                        return base + chargeTeX(a);
+                        return protectSpecials(base) + chargeTeX(a);
                     };
                     // Charge/radical on a bare vertex is attached by a zero-width
                     // invisible bond, so the skeleton's vertex is preserved and the
