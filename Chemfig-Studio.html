@@ -1048,6 +1048,26 @@
                             </button>
                             <button
                                 class="tool"
+                                data-tool="select"
+                                aria-pressed="false"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#A8A294"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path
+                                        d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"
+                                    />
+                                    <circle cx="12" cy="12" r="3.2" />
+                                </svg>
+                                <span>Select</span>
+                            </button>
+                            <button
+                                class="tool"
                                 data-tool="move"
                                 aria-pressed="false"
                             >
@@ -1796,6 +1816,7 @@
             let chemScale = 1; // uniform output scale via \scalebox
             let undoStack = [];
             let selected = null; // currently selected atom (for groups / charge)
+            let selection = new Set(); // ids highlighted by the Select tool
             const view = { s: 1, ox: 0, oy: 0 }; // world -> screen :  screen = world*s + o
 
             const canvas = document.getElementById("canvas");
@@ -1929,6 +1950,7 @@
                 aid = s.aid;
                 bid = s.bid;
                 selected = null;
+                selection.clear();
                 draw();
                 refreshOutput();
             }
@@ -1961,6 +1983,80 @@
                 };
                 bonds.push(b);
                 return b;
+            }
+            /* ---------- selection helpers (Select tool) ---------- */
+            // every atom reachable from `id` through bonds = one drawn structure
+            function fragmentOf(id) {
+                const seen = new Set([id]),
+                    queue = [id];
+                while (queue.length) {
+                    const u = queue.pop();
+                    bonds.forEach((b) => {
+                        const v = b.a1 === u ? b.a2 : b.a2 === u ? b.a1 : null;
+                        if (v !== null && !seen.has(v)) {
+                            seen.add(v);
+                            queue.push(v);
+                        }
+                    });
+                }
+                return seen;
+            }
+            function selectedAtoms() {
+                return atoms.filter((a) => selection.has(a.id));
+            }
+            function selectionBox(pad = 16) {
+                const list = selectedAtoms();
+                if (!list.length) return null;
+                let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+                list.forEach((a) => {
+                    x0 = Math.min(x0, a.x); y0 = Math.min(y0, a.y);
+                    x1 = Math.max(x1, a.x); y1 = Math.max(y1, a.y);
+                });
+                return {
+                    x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad,
+                    cx: (x0 + x1) / 2, cy: (y0 + y1) / 2,
+                };
+            }
+            // handle sits a constant distance above the box on screen, so it
+            // stays reachable at any zoom level
+            function rotateHandle() {
+                const b = selectionBox();
+                if (!b) return null;
+                return { x: b.cx, y: b.y0 - 26 / view.s, r: 9 / view.s };
+            }
+            function translateSelection(dx, dy) {
+                selectedAtoms().forEach((a) => {
+                    a.x += dx;
+                    a.y += dy;
+                });
+            }
+            // rotate about the selection centroid; `orig` freezes the pose at
+            // drag start so the rotation never accumulates rounding drift
+            function rotateSelection(rad, center, orig) {
+                const c = Math.cos(rad), sn = Math.sin(rad);
+                selectedAtoms().forEach((a) => {
+                    const o = orig ? orig[a.id] : { x: a.x, y: a.y };
+                    const dx = o.x - center.x, dy = o.y - center.y;
+                    a.x = center.x + dx * c - dy * sn;
+                    a.y = center.y + dx * sn + dy * c;
+                });
+            }
+            function poseOfSelection() {
+                const m = {};
+                selectedAtoms().forEach((a) => (m[a.id] = { x: a.x, y: a.y }));
+                return m;
+            }
+            function deleteSelection() {
+                if (!selection.size) return;
+                snapshot();
+                atoms = atoms.filter((a) => !selection.has(a.id));
+                bonds = bonds.filter(
+                    (b) => !selection.has(b.a1) && !selection.has(b.a2),
+                );
+                if (selected && selection.has(selected.id)) selected = null;
+                selection.clear();
+                draw();
+                refreshOutput();
             }
             function atomAt(x, y, r = 16) {
                 let best = null,
@@ -2116,7 +2212,20 @@
                         ctx.restore();
                     }
                 }
+                // halo behind every atom of the current selection
+                if (selection.size) {
+                    ctx.save();
+                    ctx.fillStyle = cssVar("--amber");
+                    ctx.globalAlpha = 0.16;
+                    selectedAtoms().forEach((a) => {
+                        ctx.beginPath();
+                        ctx.arc(a.x, a.y, 13, 0, 7);
+                        ctx.fill();
+                    });
+                    ctx.restore();
+                }
                 atoms.forEach((a) => drawAtom(a));
+                drawSelectionChrome();
                 ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
                 document.getElementById("emptyHint").style.display =
                     atoms.length ? "none" : "flex";
@@ -2249,6 +2358,54 @@
                 }
             }
 
+            function drawSelectionChrome() {
+                const px = 1 / view.s; // one screen pixel in world units
+                // live marquee
+                if (drag && drag.marquee) {
+                    const x0 = Math.min(drag.x0, drag.cx),
+                        y0 = Math.min(drag.y0, drag.cy),
+                        w = Math.abs(drag.cx - drag.x0),
+                        h = Math.abs(drag.cy - drag.y0);
+                    ctx.save();
+                    ctx.fillStyle = cssVar("--accent");
+                    ctx.globalAlpha = 0.08;
+                    ctx.fillRect(x0, y0, w, h);
+                    ctx.globalAlpha = 1;
+                    ctx.strokeStyle = cssVar("--accent");
+                    ctx.lineWidth = 1.2 * px;
+                    ctx.setLineDash([5 * px, 4 * px]);
+                    ctx.strokeRect(x0, y0, w, h);
+                    ctx.restore();
+                }
+                const b = selectionBox();
+                if (!b || tool !== "select") return;
+                ctx.save();
+                ctx.strokeStyle = cssVar("--amber");
+                ctx.lineWidth = 1.2 * px;
+                ctx.setLineDash([6 * px, 5 * px]);
+                ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+                ctx.setLineDash([]);
+                // rotate handle: stem + grip
+                const h = rotateHandle();
+                ctx.beginPath();
+                ctx.moveTo(b.cx, b.y0);
+                ctx.lineTo(h.x, h.y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.r, 0, 7);
+                ctx.fillStyle = cssVar("--amber");
+                ctx.globalAlpha = drag && drag.rotate ? 1 : 0.85;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                // little rotation arc inside the grip
+                ctx.strokeStyle = "#1a1814";
+                ctx.lineWidth = 1.4 * px;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.r * 0.45, -0.6, 3.6);
+                ctx.stroke();
+                ctx.restore();
+            }
+
             /* ---------- pointer interaction ---------- */
             let drag = null,
                 hover = null,
@@ -2282,7 +2439,23 @@
                 if (drag) {
                     drag.cx = p.x;
                     drag.cy = p.y;
-                    if (drag.from) {
+                    if (drag.selMove) {
+                        translateSelection(p.x - drag.last.x, p.y - drag.last.y);
+                        drag.last = p;
+                        drag.moved = true;
+                    } else if (drag.rotate) {
+                        let ang =
+                            Math.atan2(p.y - drag.center.y, p.x - drag.center.x) -
+                            drag.a0;
+                        if (e.shiftKey) {
+                            const step = Math.PI / 12; // 15-degree detents
+                            ang = Math.round(ang / step) * step;
+                        }
+                        rotateSelection(ang, drag.center, drag.orig);
+                        drag.moved = true;
+                    } else if (drag.marquee) {
+                        // rectangle is drawn straight from drag.cx / drag.cy
+                    } else if (drag.from) {
                         drag.overAtom = atomAt(p.x, p.y, 16);
                         if (drag.overAtom === drag.from) drag.overAtom = null;
                         drag.snap = snapTo(drag.from.x, drag.from.y, p.x, p.y);
@@ -2292,6 +2465,7 @@
                     }
                     draw();
                     if (tool === "move" && drag.moveAtom) refreshOutput();
+                    if (drag.selMove || drag.rotate) refreshOutput();
                 }
             });
             canvas.addEventListener("pointerdown", (e) => {
@@ -2315,6 +2489,57 @@
                     }
                     draw();
                     refreshOutput();
+                    return;
+                }
+                if (tool === "select") {
+                    // 1. grab the rotate handle?
+                    const h = selection.size ? rotateHandle() : null;
+                    if (h && Math.hypot(p.x - h.x, p.y - h.y) <= h.r * 1.9) {
+                        const b = selectionBox();
+                        snapshot();
+                        drag = {
+                            rotate: true,
+                            center: { x: b.cx, y: b.cy },
+                            a0: Math.atan2(p.y - b.cy, p.x - b.cx),
+                            orig: poseOfSelection(),
+                            cx: p.x, cy: p.y, moved: false,
+                        };
+                        return;
+                    }
+                    // 2. on an atom: shift-click toggles that structure,
+                    //    plain click selects it and starts a move
+                    if (a) {
+                        if (e.shiftKey && selection.has(a.id)) {
+                            fragmentOf(a.id).forEach((id) => selection.delete(id));
+                            drag = null;
+                            draw();
+                            updateStatus();
+                            return;
+                        }
+                        if (!selection.has(a.id)) {
+                            if (!e.shiftKey) selection.clear();
+                            fragmentOf(a.id).forEach((id) => selection.add(id));
+                        }
+                        selected = a;
+                        snapshot();
+                        drag = { selMove: true, last: p, cx: p.x, cy: p.y, moved: false };
+                        draw();
+                        updateStatus();
+                        return;
+                    }
+                    // 3. inside the box but not on an atom: still a move
+                    const box = selectionBox();
+                    if (box && p.x >= box.x0 && p.x <= box.x1 &&
+                        p.y >= box.y0 && p.y <= box.y1) {
+                        snapshot();
+                        drag = { selMove: true, last: p, cx: p.x, cy: p.y, moved: false };
+                        return;
+                    }
+                    // 4. empty canvas: rubber-band
+                    if (!e.shiftKey) selection.clear();
+                    drag = { marquee: true, x0: p.x, y0: p.y, cx: p.x, cy: p.y };
+                    draw();
+                    updateStatus();
                     return;
                 }
                 if (tool === "move") {
@@ -2357,6 +2582,29 @@
                     mouseDownPt = null;
                     return;
                 }
+                if (tool === "select") {
+                    if (drag.marquee) {
+                        const x0 = Math.min(drag.x0, drag.cx),
+                            x1 = Math.max(drag.x0, drag.cx),
+                            y0 = Math.min(drag.y0, drag.cy),
+                            y1 = Math.max(drag.y0, drag.cy);
+                        if (x1 - x0 > 3 || y1 - y0 > 3)
+                            atoms.forEach((a) => {
+                                if (a.x >= x0 && a.x <= x1 && a.y >= y0 && a.y <= y1)
+                                    selection.add(a.id);
+                            });
+                    } else if ((drag.selMove || drag.rotate) && !drag.moved) {
+                        undoStack.pop(); // a click that moved nothing
+                    }
+                    drag = null;
+                    mouseDownPt = null;
+                    hover = null;
+                    draw();
+                    updateStatus();
+                    refreshOutput();
+                    return;
+                }
+
                 const moved =
                     mouseDownPt &&
                     Math.hypot(p.x - mouseDownPt.x, p.y - mouseDownPt.y) > 6;
@@ -2587,17 +2835,19 @@
                         }
                         return;
                     }
-                    tool = t.dataset.tool;
-                    document
-                        .querySelectorAll(".tool")
-                        .forEach((x) =>
-                            x.setAttribute(
-                                "aria-pressed",
-                                x.dataset.tool === tool,
-                            ),
-                        );
-                    updateStatus();
+                    setTool(t.dataset.tool);
                 });
+            function setTool(name) {
+                tool = name;
+                if (tool !== "select") selection.clear();
+                document
+                    .querySelectorAll(".tool")
+                    .forEach((x) =>
+                        x.setAttribute("aria-pressed", x.dataset.tool === tool),
+                    );
+                updateStatus();
+                draw();
+            }
             document
                 .getElementById("orderGrid")
                 .addEventListener("click", (e) => {
@@ -2632,6 +2882,10 @@
                 if (tool === "erase")
                     st.innerHTML =
                         "<b>Erase</b> — click an atom or bond to remove it";
+                else if (tool === "select")
+                    st.innerHTML = selection.size
+                        ? `<b>${selection.size} atom${selection.size > 1 ? "s" : ""} selected</b> — drag to move · drag the handle to rotate (Shift = 15&deg; steps) · [ ] rotate · arrows nudge · Del removes`
+                        : "<b>Select</b> — click a structure to highlight it · drag a box for part of one · Shift-click adds";
                 else if (tool === "move")
                     st.innerHTML =
                         "<b>Move</b> — drag atoms to reposition · drag the background to pan";
@@ -2954,6 +3208,61 @@
             }
 
             document.addEventListener("keydown", (e) => {
+                // never hijack keys while the user is typing in a field
+                const t = e.target;
+                if (
+                    t &&
+                    (t.tagName === "INPUT" ||
+                        t.tagName === "TEXTAREA" ||
+                        t.isContentEditable)
+                )
+                    return;
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+                    e.preventDefault();
+                    selection = new Set(atoms.map((a) => a.id));
+                    if (tool !== "select") setTool("select");
+                    draw();
+                    updateStatus();
+                    return;
+                }
+                if (tool === "select" && selection.size) {
+                    const box = selectionBox();
+                    const nudge = e.shiftKey ? 10 : 2;
+                    const rot = (deg) => {
+                        snapshot();
+                        rotateSelection(
+                            (deg * Math.PI) / 180,
+                            { x: box.cx, y: box.cy },
+                            null,
+                        );
+                        draw();
+                        refreshOutput();
+                    };
+                    const pan = (dx, dy) => {
+                        snapshot();
+                        translateSelection(dx, dy);
+                        draw();
+                        refreshOutput();
+                    };
+                    if (e.key === "Escape") {
+                        selection.clear();
+                        draw();
+                        updateStatus();
+                        return;
+                    }
+                    if (e.key === "[") return e.preventDefault(), rot(-15);
+                    if (e.key === "]") return e.preventDefault(), rot(15);
+                    if (e.key === "ArrowLeft") return e.preventDefault(), pan(-nudge, 0);
+                    if (e.key === "ArrowRight") return e.preventDefault(), pan(nudge, 0);
+                    if (e.key === "ArrowUp") return e.preventDefault(), pan(0, -nudge);
+                    if (e.key === "ArrowDown") return e.preventDefault(), pan(0, nudge);
+                    if (e.key === "Delete" || e.key === "Backspace") {
+                        e.preventDefault();
+                        deleteSelection();
+                        updateStatus();
+                        return;
+                    }
+                }
                 if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
                     e.preventDefault();
                     undo();
