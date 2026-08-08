@@ -319,6 +319,9 @@
             .order[aria-pressed="true"] line {
                 stroke: #06241f;
             }
+            .order[aria-pressed="true"] polygon {
+                fill: #06241f;
+            }
 
             .tmpl-grid {
                 display: grid;
@@ -1231,6 +1234,86 @@
 
                     <div class="group">
                         <span class="eyebrow"
+                            >Bond style
+                            <span class="hint-inline"
+                                >· click a bond to flip</span
+                            ></span
+                        >
+                        <div class="order-grid" id="stereoGrid">
+                            <button
+                                class="order"
+                                data-stereo=""
+                                aria-pressed="true"
+                                title="Plain — in the plane of the page"
+                            >
+                                <svg viewBox="0 0 30 20">
+                                    <line
+                                        x1="4"
+                                        y1="10"
+                                        x2="26"
+                                        y2="10"
+                                        stroke="#A8A294"
+                                        stroke-width="2.2"
+                                    />
+                                </svg>
+                            </button>
+                            <button
+                                class="order"
+                                data-stereo="wedge"
+                                aria-pressed="false"
+                                title="Wedge — toward the viewer. Narrow end at the atom you drew from."
+                            >
+                                <svg viewBox="0 0 30 20">
+                                    <polygon
+                                        points="4,10 26,4.5 26,15.5"
+                                        fill="#A8A294"
+                                    />
+                                </svg>
+                            </button>
+                            <button
+                                class="order"
+                                data-stereo="hash"
+                                aria-pressed="false"
+                                title="Dashed — away from the viewer. Narrow end at the atom you drew from."
+                            >
+                                <svg viewBox="0 0 30 20">
+                                    <g
+                                        stroke="#A8A294"
+                                        stroke-width="1.8"
+                                        stroke-linecap="round"
+                                    >
+                                        <line
+                                            x1="8"
+                                            y1="9"
+                                            x2="8"
+                                            y2="11"
+                                        />
+                                        <line
+                                            x1="13"
+                                            y1="8"
+                                            x2="13"
+                                            y2="12"
+                                        />
+                                        <line
+                                            x1="18"
+                                            y1="7"
+                                            x2="18"
+                                            y2="13"
+                                        />
+                                        <line
+                                            x1="23"
+                                            y1="5.5"
+                                            x2="23"
+                                            y2="14.5"
+                                        />
+                                    </g>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="group">
+                        <span class="eyebrow"
                             >Charge
                             <span class="hint-inline"
                                 >· select an atom</span
@@ -1469,6 +1552,12 @@
                                 triple
                             </li>
                             <li>
+                                <b>Bond style</b> — pick Wedge or Dashed, then
+                                draw; the point sits at the atom you drew
+                                <i>from</i>. Click a bond to apply it, again to
+                                flip it, again to clear it
+                            </li>
+                            <li>
                                 <b>Custom label</b> — type any group (e.g.
                                 <code>SO_3H</code>), Set, then place or click an
                                 atom
@@ -1548,15 +1637,23 @@
                 A.forEach((a) => (adj[a.id] = []));
                 B.forEach((b) => {
                     if (adj[b.a1] && adj[b.a2]) {
+                        // narrowHere records, for each direction the traversal may
+                        // take this bond in, whether the wedge's point is at the
+                        // atom we are coming from — that is what picks > over <
+                        const narrowAtA1 = !b.stereoFlip;
                         adj[b.a1].push({
                             to: b.a2,
                             order: b.order || 1,
                             bid: b._bid,
+                            stereo: b.stereo || null,
+                            narrowHere: narrowAtA1,
                         });
                         adj[b.a2].push({
                             to: b.a1,
                             order: b.order || 1,
                             bid: b._bid,
+                            stereo: b.stereo || null,
+                            narrowHere: !narrowAtA1,
                         });
                     }
                 });
@@ -1620,15 +1717,33 @@
                                 const label = "r" + ringTotal;
                                 const earlier = disc[e.to] < disc[u] ? e.to : u;
                                 const later = earlier === u ? e.to : u;
+                                // A ring-closing bond is written as ?[label,type]
+                                // and can only name its type by number: 4 and 5 are
+                                // the solid wedge either way round, 6 and 7 the
+                                // dashed one. The bond runs from the atom that
+                                // opened the ring to the one that closes it, so the
+                                // pair to pick depends on which of those holds the
+                                // point.
+                                const narrowAtEarlier =
+                                    earlier === u ? e.narrowHere : !e.narrowHere;
+                                const btype = e.stereo
+                                    ? e.stereo === "wedge"
+                                        ? narrowAtEarlier
+                                            ? 4
+                                            : 5
+                                        : narrowAtEarlier
+                                          ? 6
+                                          : 7
+                                    : e.order;
                                 (ringMark[earlier] =
                                     ringMark[earlier] || []).push({
                                     label,
-                                    order: e.order,
+                                    btype,
                                     role: "open",
                                 });
                                 (ringMark[later] = ringMark[later] || []).push({
                                     label,
-                                    order: e.order,
+                                    btype,
                                     role: "close",
                                 });
                             }
@@ -1767,20 +1882,30 @@
                         if (!m) return "";
                         return m
                             .map((x) =>
-                                x.role === "close" && x.order > 1
-                                    ? `?[${x.label},${x.order}]`
+                                x.role === "close" && x.btype > 1
+                                    ? `?[${x.label},${x.btype}]`
                                     : `?[${x.label}]`,
                             )
                             .join("");
                     };
-                    const bondStr = (from, to, order) => {
+                    // chemfig writes the wedge as > when the point is at the atom
+                    // it is drawing from and < when it is at the far one, so the
+                    // symbol depends on the direction the DFS happens to take.
+                    const bondStr = (from, to, e) => {
                         const p = byId[from],
                             c = byId[to];
                         const ang = Math.round(
                             (Math.atan2(-(c.y - p.y), c.x - p.x) * 180) /
                                 Math.PI,
                         );
-                        const ch = order === 3 ? "~" : order === 2 ? "=" : "-";
+                        const ch = e.stereo
+                            ? (e.narrowHere ? ">" : "<") +
+                              (e.stereo === "hash" ? ":" : "")
+                            : e.order === 3
+                              ? "~"
+                              : e.order === 2
+                                ? "="
+                                : "-";
                         return `${ch}[:${ang}]`;
                     };
                     function emit(u, fromBid) {
@@ -1793,8 +1918,7 @@
                                 !seen.has(e.to),
                         );
                         kids.forEach((e, i) => {
-                            const sub =
-                                bondStr(u, e.to, e.order) + emit(e.to, e.bid);
+                            const sub = bondStr(u, e.to, e) + emit(e.to, e.bid);
                             s += i < kids.length - 1 ? `(${sub})` : sub;
                         });
                         return s;
@@ -1842,6 +1966,7 @@
                 bid = 0;
             let activeEl = "C",
                 activeOrder = 1,
+                activeStereo = null, // null | "wedge" | "hash"
                 tool = "draw";
             let skeletal = true;
             let chemScale = 1; // uniform output scale via \scalebox
@@ -1995,25 +2120,63 @@
                 atoms.push(a);
                 return a;
             }
-            function newBond(a1, a2, order) {
+            // `stereo` is passed only for bonds the user draws by hand; ring and
+            // group templates leave it out so the active style never leaks into
+            // a template's bonds. A stereo bond is single by definition — the
+            // wedge/dash says which side of the page an atom sits on, which is
+            // meaningless on a double or triple bond.
+            // The narrow (point) end sits at a1, unless stereoFlip is set.
+            function newBond(a1, a2, order, stereo) {
                 if (a1 === a2) return null;
+                const st = stereo || null;
+                const ord = st ? 1 : order || activeOrder;
                 const ex = bonds.find(
                     (b) =>
                         (b.a1 === a1 && b.a2 === a2) ||
                         (b.a1 === a2 && b.a2 === a1),
                 );
                 if (ex) {
-                    ex.order = order || activeOrder;
+                    ex.order = ord;
+                    ex.stereo = st;
+                    // a1/a2 of the existing bond may be the other way round from
+                    // the direction just drawn, so point the narrow end at the
+                    // atom the user dragged from
+                    ex.stereoFlip = st ? ex.a1 !== a1 : false;
                     return ex;
                 }
                 const b = {
                     id: "b" + bid++,
                     a1,
                     a2,
-                    order: order || activeOrder,
+                    order: ord,
+                    stereo: st,
+                    stereoFlip: false,
                 };
                 bonds.push(b);
                 return b;
+            }
+            // What a click on an existing bond does depends on the active style.
+            // With "plain" selected it cycles the order, as it always has. With
+            // wedge or dash selected it applies that style, then flips which end
+            // is the point, then clears back to a plain single — so one control
+            // covers both "make this a wedge" and "it's pointing the wrong way".
+            function cycleBond(b) {
+                if (!activeStereo) {
+                    b.stereo = null;
+                    b.stereoFlip = false;
+                    b.order = (b.order % 3) + 1;
+                    return;
+                }
+                if (b.stereo !== activeStereo) {
+                    b.stereo = activeStereo;
+                    b.stereoFlip = false;
+                    b.order = 1;
+                } else if (!b.stereoFlip) {
+                    b.stereoFlip = true;
+                } else {
+                    b.stereo = null;
+                    b.stereoFlip = false;
+                }
             }
             /* ---------- selection helpers (Select tool) ---------- */
             // every atom reachable from `id` through bonds = one drawn structure
@@ -2218,7 +2381,7 @@
                     const p = atoms.find((a) => a.id === b.a1),
                         q = atoms.find((a) => a.id === b.a2);
                     if (!p || !q) return;
-                    drawBond(p, q, b.order);
+                    drawBond(p, q, b);
                 });
                 if (drag && drag.from) {
                     const target = drag.overAtom;
@@ -2261,7 +2424,8 @@
                 document.getElementById("emptyHint").style.display =
                     atoms.length ? "none" : "flex";
             }
-            function drawBond(p, q, order) {
+            function drawBond(p, q, b) {
+                const order = b.order || 1;
                 const lab1 = visibleLabel(p),
                     lab2 = visibleLabel(q);
                 let x1 = p.x,
@@ -2289,7 +2453,38 @@
                     ctx.lineTo(x2 + nx * ox, y2 + ny * oy);
                     ctx.stroke();
                 };
-                if (order === 1) {
+                if (b.stereo) {
+                    // p is always a1, so the point sits at p unless flipped
+                    const sx = b.stereoFlip ? x2 : x1,
+                        sy = b.stereoFlip ? y2 : y1,
+                        ex = b.stereoFlip ? x1 : x2,
+                        ey = b.stereoFlip ? y1 : y2;
+                    const half = 4.4;
+                    if (b.stereo === "wedge") {
+                        ctx.fillStyle = "#d9d3c4";
+                        ctx.beginPath();
+                        ctx.moveTo(sx, sy);
+                        ctx.lineTo(ex + nx * half, ey + ny * half);
+                        ctx.lineTo(ex - nx * half, ey - ny * half);
+                        ctx.closePath();
+                        ctx.fill();
+                    } else {
+                        // rungs of a ladder that widens toward the far end, so the
+                        // dashed bond reads as receding even in a small drawing
+                        ctx.lineWidth = 1.7;
+                        const rungs = 6;
+                        for (let i = 1; i <= rungs; i++) {
+                            const t = i / rungs;
+                            const cx = sx + (ex - sx) * t,
+                                cy = sy + (ey - sy) * t,
+                                h = half * t;
+                            ctx.beginPath();
+                            ctx.moveTo(cx + nx * h, cy + ny * h);
+                            ctx.lineTo(cx - nx * h, cy - ny * h);
+                            ctx.stroke();
+                        }
+                    }
+                } else if (order === 1) {
                     seg(0, 0);
                 } else if (order === 2) {
                     seg(3, 3);
@@ -2657,13 +2852,13 @@
                         selected = drag.from;
                     } else if (drag.overAtom) {
                         snapshot();
-                        newBond(drag.from.id, drag.overAtom.id, activeOrder);
+                        newBond(drag.from.id, drag.overAtom.id, activeOrder, activeStereo);
                         selected = drag.overAtom;
                     } else {
                         snapshot();
                         const s = drag.snap;
                         const na = newAtom(s.x, s.y, activeEl);
-                        newBond(drag.from.id, na.id, activeOrder);
+                        newBond(drag.from.id, na.id, activeOrder, activeStereo);
                         selected = na;
                     }
                 } else {
@@ -2672,7 +2867,7 @@
                         const b = bondAt(p.x, p.y);
                         if (b) {
                             snapshot();
-                            b.order = (b.order % 3) + 1;
+                            cycleBond(b);
                         } else {
                             snapshot();
                             selected = newAtom(p.x, p.y, activeEl);
@@ -2686,7 +2881,7 @@
                         );
                         const s = snapTo(a1.x, a1.y, p.x, p.y);
                         const a2 = newAtom(s.x, s.y, activeEl);
-                        newBond(a1.id, a2.id, activeOrder);
+                        newBond(a1.id, a2.id, activeOrder, activeStereo);
                         selected = a2;
                     }
                 }
@@ -2716,7 +2911,7 @@
                         a.y + BOND_LEN * Math.sin(ang),
                         activeEl,
                     );
-                    newBond(a.id, na.id, activeOrder);
+                    newBond(a.id, na.id, activeOrder, activeStereo);
                     selected = na;
                     draw();
                     refreshOutput();
@@ -2744,10 +2939,17 @@
                     : '<span style="color:#76716685">…and the SMILES string</span>';
                 spre.dataset.raw = sm.smiles;
                 const warn = document.getElementById("smilesWarn");
-                warn.hidden = !sm.unknown;
+                const notes = [];
                 if (sm.unknown)
-                    warn.textContent =
-                        "Some labels aren’t recognised groups — they’re written as * (wildcard). Draw them out atom by atom for an exact string.";
+                    notes.push(
+                        "Some labels aren’t recognised groups — they’re written as * (wildcard). Draw them out atom by atom for an exact string.",
+                    );
+                if (bonds.some((b) => b.stereo))
+                    notes.push(
+                        "Wedge and dashed bonds are in the chemfig output but not the SMILES, which records connectivity only — no stereochemistry.",
+                    );
+                warn.hidden = !notes.length;
+                warn.textContent = notes.join(" ");
 
                 document.getElementById("atomCount").textContent = atoms.length;
                 document.getElementById("bondCount").textContent = bonds.length;
@@ -2885,16 +3087,39 @@
                     const o = e.target.closest(".order");
                     if (!o) return;
                     activeOrder = +o.dataset.order;
-                    document
-                        .querySelectorAll(".order")
-                        .forEach((x) =>
-                            x.setAttribute(
-                                "aria-pressed",
-                                +x.dataset.order === activeOrder,
-                            ),
-                        );
-                    updateStatus();
+                    // a wedge or dash is only meaningful on a single bond, so
+                    // asking for a double or triple drops back to a plain style
+                    if (activeOrder !== 1) activeStereo = null;
+                    syncBondButtons();
                 });
+            document
+                .getElementById("stereoGrid")
+                .addEventListener("click", (e) => {
+                    const s = e.target.closest(".order");
+                    if (!s) return;
+                    activeStereo = s.dataset.stereo || null;
+                    if (activeStereo) activeOrder = 1;
+                    syncBondButtons();
+                });
+            function syncBondButtons() {
+                document
+                    .querySelectorAll("#orderGrid .order")
+                    .forEach((x) =>
+                        x.setAttribute(
+                            "aria-pressed",
+                            +x.dataset.order === activeOrder,
+                        ),
+                    );
+                document
+                    .querySelectorAll("#stereoGrid .order")
+                    .forEach((x) =>
+                        x.setAttribute(
+                            "aria-pressed",
+                            (x.dataset.stereo || null) === activeStereo,
+                        ),
+                    );
+                updateStatus();
+            }
             function updateStatus() {
                 const names = {
                     C: "carbon",
@@ -2920,6 +3145,8 @@
                 else if (tool === "move")
                     st.innerHTML =
                         "<b>Move</b> — drag atoms to reposition · drag the background to pan";
+                else if (activeStereo)
+                    st.innerHTML = `Drawing <b>${elName}</b> · <b>${activeStereo === "wedge" ? "wedge" : "dashed"}</b> bonds — click a bond to apply, again to flip it`;
                 else
                     st.innerHTML = `Drawing <b>${elName}</b> · <b>${{ 1: "single", 2: "double", 3: "triple" }[activeOrder]}</b> bonds`;
             }
