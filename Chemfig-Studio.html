@@ -1130,6 +1130,61 @@
                     </div>
 
                     <div class="group">
+                        <span class="eyebrow"
+                            >Flip
+                            <span class="hint-inline"
+                                >· selection, else all</span
+                            ></span
+                        >
+                        <div class="tool-grid" id="flipGrid">
+                            <button
+                                class="tool"
+                                data-flip="x"
+                                title="Turn the structure over left-to-right (shortcut: H). Wedges and dashes swap — it is the same molecule seen from the other side."
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#A8A294"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path
+                                        d="M12 3v18"
+                                        stroke-dasharray="2.5 3"
+                                    />
+                                    <path d="M9 7l-5 5 5 5z" />
+                                    <path d="M15 7l5 5-5 5z" />
+                                </svg>
+                                <span>Flip ↔</span>
+                            </button>
+                            <button
+                                class="tool"
+                                data-flip="y"
+                                title="Turn the structure over top-to-bottom (shortcut: V). Wedges and dashes swap — it is the same molecule seen from the other side."
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="#A8A294"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path
+                                        d="M3 12h18"
+                                        stroke-dasharray="2.5 3"
+                                    />
+                                    <path d="M7 9l5-5 5 5z" />
+                                    <path d="M7 15l5 5 5-5z" />
+                                </svg>
+                                <span>Flip ↕</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="group">
                         <span class="eyebrow">Atom</span>
                         <div class="el-grid" id="elGrid"></div>
                         <div class="custom-label">
@@ -1440,7 +1495,7 @@
                 <aside class="outpanel">
                     <div class="out-head">
                         <span class="eyebrow">Output</span>
-                        <h2>chemfig &amp; SMILES</h2>
+                        <h2>chemfig, SMILES &amp; name</h2>
                     </div>
                     <div class="code-box">
                         <div class="cb-top">
@@ -1507,6 +1562,32 @@
                         <pre class="code smiles" id="smilesOut"></pre>
                         <div class="cb-warn" id="smilesWarn" hidden></div>
                     </div>
+                    <div class="code-box">
+                        <div class="cb-top">
+                            <span class="eyebrow">IUPAC name</span>
+                            <button class="copy" id="copyNameBtn">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <rect
+                                        x="9"
+                                        y="9"
+                                        width="11"
+                                        height="11"
+                                        rx="2"
+                                    />
+                                    <path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg
+                                >Copy
+                            </button>
+                        </div>
+                        <pre class="code smiles" id="nameOut"></pre>
+                        <div class="cb-warn" id="nameWarn" hidden></div>
+                    </div>
                     <div class="stats">
                         <div class="stat">
                             <div class="n" id="atomCount">0</div>
@@ -1561,6 +1642,11 @@
                                 <b>Custom label</b> — type any group (e.g.
                                 <code>SO_3H</code>), Set, then place or click an
                                 atom
+                            </li>
+                            <li>
+                                <b>Flip</b> <kbd>H</kbd> / <kbd>V</kbd> — turn
+                                the structure over; wedges and dashes swap, so
+                                it stays the same stereoisomer
                             </li>
                             <li>
                                 <b>Charge</b> — select an atom, pick 2−/−/+/2+
@@ -2234,6 +2320,44 @@
                     a.x = center.x + dx * c - dy * sn;
                     a.y = center.y + dx * sn + dy * c;
                 });
+            }
+            // A flip is a 180-degree rotation about an axis lying in the page —
+            // the structure is turned over, not reflected — so it is still the
+            // same stereoisomer, just seen from the other side. Turning it over
+            // moves every substituent that pointed toward the viewer to behind
+            // the page and vice versa, so each wedge has to become a dash and
+            // each dash a wedge. Flipping the coordinates alone would quietly
+            // redraw the molecule as its enantiomer.
+            function flipAtoms(list, axis) {
+                if (!list.length) return;
+                let lo = Infinity,
+                    hi = -Infinity;
+                list.forEach((a) => {
+                    const v = axis === "x" ? a.x : a.y;
+                    lo = Math.min(lo, v);
+                    hi = Math.max(hi, v);
+                });
+                const mid = (lo + hi) / 2;
+                list.forEach((a) => {
+                    if (axis === "x") a.x = 2 * mid - a.x;
+                    else a.y = 2 * mid - a.y;
+                });
+                // Only bonds with both ends in the flipped set turned over with
+                // it. A stereo bond reaching out to an atom that stayed put was
+                // not rotated at all, so inverting it would be wrong.
+                const ids = new Set(list.map((a) => a.id));
+                bonds.forEach((b) => {
+                    if (b.stereo && ids.has(b.a1) && ids.has(b.a2))
+                        b.stereo = b.stereo === "wedge" ? "hash" : "wedge";
+                });
+            }
+            function flipSelection(axis) {
+                const list = selection.size ? selectedAtoms() : atoms;
+                if (!list.length) return;
+                snapshot();
+                flipAtoms(list, axis);
+                draw();
+                refreshOutput();
             }
             function poseOfSelection() {
                 const m = {};
@@ -2951,6 +3075,41 @@
                 warn.hidden = !notes.length;
                 warn.textContent = notes.join(" ");
 
+                const nm = IUPACgen.nameOf(atoms, bonds);
+                const npre = document.getElementById("nameOut");
+                const nwarn = document.getElementById("nameWarn");
+                npre.innerHTML = nm.name
+                    ? nm.name
+                          .replace(
+                              /[&<>]/g,
+                              (c) =>
+                                  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
+                          )
+                          .replace(/(\d+(,\d+)*)-/g, '<span class="tok-ang">$1</span>-')
+                    : '<span style="color:#76716685">' +
+                      (nm.why
+                          ? "No name — " + nm.why + "."
+                          : "…and the name") +
+                      "</span>";
+                // a familiar name for the ring systems that have one
+                if (nm.name && nm.common)
+                    npre.innerHTML +=
+                        '<span style="color:#76716685">' +
+                        "\n" +
+                        (nm.common.startsWith("tricyclo") ||
+                        nm.common.startsWith("pentacyclo")
+                            ? "systematically: "
+                            : "also called: ") +
+                        nm.common +
+                        "</span>";
+                npre.dataset.raw = nm.name || "";
+                // stereodescriptors are a separate problem from the skeleton name,
+                // so say so rather than let a drawn wedge look accounted for
+                nwarn.hidden = !(nm.name && bonds.some((b) => b.stereo));
+                if (!nwarn.hidden)
+                    nwarn.textContent =
+                        "The name covers the skeleton only — no R/S or E/Z stereodescriptors, so it doesn’t distinguish this from its stereoisomers.";
+
                 document.getElementById("atomCount").textContent = atoms.length;
                 document.getElementById("bondCount").textContent = bonds.length;
                 document.getElementById("ringCount").textContent = res.rings;
@@ -3093,6 +3252,12 @@
                     syncBondButtons();
                 });
             document
+                .getElementById("flipGrid")
+                .addEventListener("click", (e) => {
+                    const f = e.target.closest(".tool");
+                    if (f) flipSelection(f.dataset.flip);
+                });
+            document
                 .getElementById("stereoGrid")
                 .addEventListener("click", (e) => {
                     const s = e.target.closest(".order");
@@ -3140,7 +3305,7 @@
                         "<b>Erase</b> — click an atom or bond to remove it";
                 else if (tool === "select")
                     st.innerHTML = selection.size
-                        ? `<b>${selection.size} atom${selection.size > 1 ? "s" : ""} selected</b> — drag to move · drag the handle to rotate (Shift = 15&deg; steps) · [ ] rotate · arrows nudge · Del removes`
+                        ? `<b>${selection.size} atom${selection.size > 1 ? "s" : ""} selected</b> — drag to move · drag the handle to rotate (Shift = 15&deg; steps) · [ ] rotate · H V flip · arrows nudge · Del removes`
                         : "<b>Select</b> — click a structure to highlight it · drag a box for part of one · Shift-click adds";
                 else if (tool === "move")
                     st.innerHTML =
@@ -3393,6 +3558,21 @@
                     }, 1400);
                 });
             };
+            document.getElementById("copyNameBtn").onclick = () => {
+                const raw = document.getElementById("nameOut").dataset.raw || "";
+                if (!raw) return;
+                navigator.clipboard.writeText(raw).then(() => {
+                    const b = document.getElementById("copyNameBtn");
+                    b.classList.add("copied");
+                    b.innerHTML =
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Copied';
+                    setTimeout(() => {
+                        b.classList.remove("copied");
+                        b.innerHTML =
+                            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copy';
+                    }, 1400);
+                });
+            };
             document.getElementById("copySmilesBtn").onclick = () => {
                 const raw =
                     document.getElementById("smilesOut").dataset.raw || "";
@@ -3475,6 +3655,14 @@
                         t.isContentEditable)
                 )
                     return;
+                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                    const k = e.key.toLowerCase();
+                    if (k === "h" || k === "v") {
+                        e.preventDefault();
+                        flipSelection(k === "h" ? "x" : "y");
+                        return;
+                    }
+                }
                 if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
                     e.preventDefault();
                     selection = new Set(atoms.map((a) => a.id));
@@ -4885,7 +5073,1426 @@
                         atoms: H.length,
                     };
                 }
-                return { generate };
+                // buildGraph is shared with the IUPAC namer below, which needs the
+                // same condensed-label expansion and implicit-H model
+                return { generate, buildGraph };
+            })();
+
+            /* =================================================================
+   IUPAC naming
+
+   Substitutive nomenclature over a deliberately bounded subset. Naming an
+   arbitrary structure is an enormous problem (general fusion nomenclature,
+   ring assemblies, seniority of every functional class, CIP
+   stereodescriptors); what follows covers acyclic skeletons, single rings,
+   von Baeyer spiro and bicyclic systems, and the retained polycyclic names,
+   with the common functional groups. Anything outside that returns a reason
+   instead of a name — a plausible-looking wrong name is far worse than an
+   honest "can't name this".
+   ================================================================= */
+            const IUPACgen = (function () {
+                const STEM = ["", "meth", "eth", "prop", "but", "pent", "hex",
+                    "hept", "oct", "non", "dec", "undec", "dodec", "tridec",
+                    "tetradec", "pentadec", "hexadec", "heptadec", "octadec",
+                    "nonadec", "icos"];
+                const MULT = ["", "", "di", "tri", "tetra", "penta", "hexa",
+                    "hepta", "octa", "nona", "deca", "undeca", "dodeca"];
+                const HALO = { F: "fluoro", Cl: "chloro", Br: "bromo", I: "iodo" };
+                // principal characteristic groups, most senior first
+                const SENIORITY = ["acid", "nitrile", "aldehyde", "ketone",
+                    "alcohol", "amine"];
+                const SUFFIX = {
+                    acid: "oic acid", nitrile: "nitrile", aldehyde: "al",
+                    ketone: "one", alcohol: "ol", amine: "amine",
+                };
+                // suffixes that must sit at the end of the parent chain
+                const TERMINAL = { acid: 1, nitrile: 1, aldehyde: 1 };
+
+                const fail = (why) => ({ name: null, why });
+                const isVowel = (c) => "aeiou".indexOf(c) >= 0;
+
+                /* ---------- ring perception ---------- */
+                // Tarjan: bonds whose removal disconnects the ring core. Inside a
+                // core there is only one thing such a bond can be — the link
+                // between two separate ring systems (biphenyl, phenylcyclohexane).
+                function coreCutEdges(H, coreSet) {
+                    const disc = {}, low = {}, cut = [];
+                    let t = 0;
+                    const go = (u, fromEdge) => {
+                        disc[u] = low[u] = t++;
+                        for (const e of H[u].nb) {
+                            if (!coreSet.has(e.to) || e.id === fromEdge) continue;
+                            if (disc[e.to] === undefined) {
+                                go(e.to, e.id);
+                                low[u] = Math.min(low[u], low[e.to]);
+                                if (low[e.to] > disc[u]) cut.push(e.id);
+                            } else low[u] = Math.min(low[u], disc[e.to]);
+                        }
+                    };
+                    coreSet.forEach((u) => {
+                        if (disc[u] === undefined) go(u, -1);
+                    });
+                    return cut;
+                }
+                // strip degree-1 atoms until nothing is left to strip; whatever
+                // survives is the ring system
+                function ringSystem(H) {
+                    const deg = H.map((n) => n.nb.length);
+                    const gone = H.map(() => false);
+                    let changed = true;
+                    while (changed) {
+                        changed = false;
+                        for (let i = 0; i < H.length; i++) {
+                            if (gone[i] || deg[i] > 1) continue;
+                            gone[i] = true;
+                            if (deg[i] === 1) {
+                                changed = true;
+                                H[i].nb.forEach((e) => {
+                                    if (!gone[e.to]) deg[e.to]--;
+                                });
+                            }
+                        }
+                    }
+                    const core = [];
+                    for (let i = 0; i < H.length; i++) if (!gone[i]) core.push(i);
+                    if (!core.length) return { kind: "acyclic" };
+                    const coreSet = new Set(core);
+                    if (coreCutEdges(H, coreSet).length)
+                        return { kind: "assembly" };
+                    const coreDeg = {};
+                    let edges = 0;
+                    core.forEach((i) => {
+                        coreDeg[i] = H[i].nb.filter((e) => coreSet.has(e.to)).length;
+                        edges += coreDeg[i];
+                    });
+                    edges /= 2;
+                    const rings = edges - core.length + 1;
+                    if (rings !== 1)
+                        return { kind: "poly", core, coreSet, coreDeg, rings };
+                    const ring = [core[0]];
+                    let prev = -1,
+                        cur = core[0];
+                    while (ring.length < core.length) {
+                        const nx = H[cur].nb.find(
+                            (e) => coreSet.has(e.to) && e.to !== prev,
+                        );
+                        prev = cur;
+                        cur = nx.to;
+                        ring.push(cur);
+                    }
+                    return { kind: "ring", ring, coreSet, coreDeg };
+                }
+
+                function bondOrder(H, u, v) {
+                    const e = H[u].nb.find((x) => x.to === v);
+                    return e ? e.order : 0;
+                }
+                // benzene: six carbons carrying three ring double bonds
+                function isBenzene(H, ring) {
+                    if (!ring || ring.length !== 6) return false;
+                    if (!ring.every((i) => H[i].el === "C")) return false;
+                    let d = 0;
+                    for (let k = 0; k < 6; k++)
+                        if (bondOrder(H, ring[k], ring[(k + 1) % 6]) === 2) d++;
+                    return d === 3;
+                }
+
+                /* ---------- functional groups ---------- */
+                function scan(H) {
+                    const nitro = new Set();
+                    const g = {
+                        acid: [], ester: [], amide: [], nitrile: [],
+                        aldehyde: [], ketone: [], alcohol: [], amine: [],
+                    };
+                    // charge-separated nitro is the one charged pattern that is
+                    // still an ordinary neutral substituent
+                    H.forEach((n, i) => {
+                        if (n.el !== "N" || n.charge !== 1) return;
+                        const os = n.nb.filter((e) => H[e.to].el === "O");
+                        if (os.length !== 2) return;
+                        const dbl = os.filter((e) => e.order === 2);
+                        const sgl = os.filter(
+                            (e) => e.order === 1 && H[e.to].charge === -1,
+                        );
+                        if (dbl.length === 1 && sgl.length === 1) {
+                            nitro.add(i);
+                            nitro.add(dbl[0].to);
+                            nitro.add(sgl[0].to);
+                        }
+                    });
+                    // S and P are left out: their valence genuinely varies
+                    const MAXBOND = { C: 4, N: 3, O: 2, F: 1, Cl: 1, Br: 1, I: 1 };
+                    for (let i = 0; i < H.length; i++) {
+                        const n = H[i];
+                        if (n.charge && !nitro.has(i))
+                            return { bad: "ions aren’t supported" };
+                        if (n.rad) return { bad: "radicals aren’t supported" };
+                        // naming a structure that cannot exist would give the
+                        // answer more authority than the drawing has earned
+                        const mx = MAXBOND[n.el];
+                        if (!nitro.has(i) && mx !== undefined &&
+                            n.bondSum + n.h > mx)
+                            return {
+                                bad: "an atom has more bonds than it can have",
+                            };
+                    }
+                    H.forEach((n, i) => {
+                        if (n.el === "C") {
+                            const dblO = n.nb.filter(
+                                (e) => e.order === 2 && H[e.to].el === "O",
+                            );
+                            const trpN = n.nb.filter(
+                                (e) =>
+                                    e.order === 3 &&
+                                    H[e.to].el === "N" &&
+                                    H[e.to].nb.length === 1,
+                            );
+                            if (trpN.length === 1)
+                                g.nitrile.push({ c: i, extra: [trpN[0].to] });
+                            if (dblO.length === 1) {
+                                const o2 = dblO[0].to;
+                                const sglO = n.nb.filter(
+                                    (e) => e.order === 1 && H[e.to].el === "O",
+                                );
+                                const sglN = n.nb.filter(
+                                    (e) =>
+                                        e.order === 1 &&
+                                        H[e.to].el === "N" &&
+                                        !nitro.has(e.to),
+                                );
+                                const acidO = sglO.find(
+                                    (e) => H[e.to].h >= 1 && H[e.to].nb.length === 1,
+                                );
+                                const estO = sglO.find(
+                                    (e) => H[e.to].nb.length === 2,
+                                );
+                                if (acidO)
+                                    g.acid.push({ c: i, extra: [o2, acidO.to] });
+                                else if (estO) g.ester.push({ c: i });
+                                else if (sglN.length) g.amide.push({ c: i });
+                                else {
+                                    const cN = n.nb.filter(
+                                        (e) => H[e.to].el === "C",
+                                    ).length;
+                                    if (cN <= 1 && n.h >= 1)
+                                        g.aldehyde.push({ c: i, extra: [o2] });
+                                    else if (cN === 2)
+                                        g.ketone.push({ c: i, extra: [o2] });
+                                    else
+                                        g.aldehyde.push({ c: i, extra: [o2] });
+                                }
+                            }
+                        } else if (n.el === "O") {
+                            if (
+                                n.h === 1 &&
+                                n.nb.length === 1 &&
+                                H[n.nb[0].to].el === "C" &&
+                                n.nb[0].order === 1
+                            ) {
+                                const c = n.nb[0].to;
+                                const onAcid = H[c].nb.some(
+                                    (e) => e.order === 2 && H[e.to].el === "O",
+                                );
+                                if (!onAcid)
+                                    g.alcohol.push({ c, extra: [i], o: i });
+                            }
+                        } else if (n.el === "N" && !nitro.has(i)) {
+                            const ok = n.nb.every(
+                                (e) =>
+                                    e.order === 1 &&
+                                    H[e.to].el === "C" &&
+                                    !H[e.to].nb.some(
+                                        (x) =>
+                                            x.order === 2 && H[x.to].el === "O",
+                                    ),
+                            );
+                            if (ok && n.nb.length === 1)
+                                g.amine.push({ c: n.nb[0].to, extra: [i], n: i });
+                        }
+                    });
+                    return { g, nitro };
+                }
+
+                /* ---------- locant comparison ---------- */
+                function cmpArr(a, b) {
+                    const n = Math.max(a.length, b.length);
+                    for (let i = 0; i < n; i++) {
+                        const x = a[i] === undefined ? Infinity : a[i];
+                        const y = b[i] === undefined ? Infinity : b[i];
+                        if (x !== y) return x - y;
+                    }
+                    return 0;
+                }
+                function cmpKey(a, b) {
+                    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+                        const x = a[i],
+                            y = b[i];
+                        if (x === undefined || y === undefined) continue;
+                        let d;
+                        if (Array.isArray(x)) d = cmpArr(x, y);
+                        else if (typeof x === "string")
+                            d = x < y ? -1 : x > y ? 1 : 0;
+                        else d = x - y;
+                        if (d) return d;
+                    }
+                    return 0;
+                }
+
+                /* ---------- substituent naming ---------- */
+                // longest path through `at` inside the branch that hangs off
+                // `from`, so the attachment can take the lowest possible locant
+                function branchAtoms(H, at, from) {
+                    const seen = new Set([from, at]);
+                    const list = [at],
+                        st = [at];
+                    while (st.length) {
+                        const u = st.pop();
+                        H[u].nb.forEach((e) => {
+                            if (seen.has(e.to)) return;
+                            seen.add(e.to);
+                            list.push(e.to);
+                            st.push(e.to);
+                        });
+                    }
+                    seen.delete(from);
+                    return { set: seen, list };
+                }
+                function farthestC(H, start, block, allowed) {
+                    // plain BFS over carbons of the branch
+                    const dist = { [start]: 0 },
+                        par = {},
+                        q = [start];
+                    let best = start;
+                    while (q.length) {
+                        const u = q.shift();
+                        if (dist[u] > dist[best]) best = u;
+                        H[u].nb.forEach((e) => {
+                            if (e.to === block || dist[e.to] !== undefined) return;
+                            if (!allowed.has(e.to) || H[e.to].el !== "C") return;
+                            dist[e.to] = dist[u] + 1;
+                            par[e.to] = u;
+                            q.push(e.to);
+                        });
+                    }
+                    return { best, par };
+                }
+                function pathBetween(H, a, b, block, allowed) {
+                    const par = {},
+                        q = [a],
+                        seen = new Set([a]);
+                    while (q.length) {
+                        const u = q.shift();
+                        if (u === b) break;
+                        H[u].nb.forEach((e) => {
+                            if (e.to === block || seen.has(e.to)) return;
+                            if (!allowed.has(e.to) || H[e.to].el !== "C") return;
+                            seen.add(e.to);
+                            par[e.to] = u;
+                            q.push(e.to);
+                        });
+                    }
+                    const out = [];
+                    let cur = b;
+                    while (cur !== undefined) {
+                        out.push(cur);
+                        if (cur === a) break;
+                        cur = par[cur];
+                    }
+                    return out.reverse();
+                }
+
+                // Names one substituent hanging off `at` (reached from `from`).
+                // Returns a string, or null when the branch is outside the subset.
+                function substituent(H, at, from, ctx) {
+                    const n = H[at];
+                    if (ctx.nitro.has(at)) return n.el === "N" ? "nitro" : null;
+                    if (HALO[n.el]) return HALO[n.el];
+                    if (n.el === "O") {
+                        if (bondOrder(H, from, at) === 2) return "oxo";
+                        if (n.h === 1 && n.nb.length === 1) return "hydroxy";
+                        if (n.nb.length === 2) {
+                            const other = n.nb.find((e) => e.to !== from);
+                            if (!other || H[other.to].el !== "C") return null;
+                            const alk = alkyl(H, other.to, at, ctx);
+                            if (!alk) return null;
+                            // methyl + oxy -> methoxy, and likewise down the list
+                            return alk.replace(/yl$/, "") + "oxy";
+                        }
+                        return null;
+                    }
+                    if (n.el === "S") {
+                        if (bondOrder(H, from, at) === 2) return "sulfanylidene";
+                        if (n.h === 1 && n.nb.length === 1) return "sulfanyl";
+                        return null;
+                    }
+                    if (n.el === "N") {
+                        if (n.nb.length === 1 && bondOrder(H, from, at) === 1)
+                            return "amino";
+                        return null;
+                    }
+                    if (n.el !== "C") return null;
+                    // -C#N hanging off the parent is a cyano prefix
+                    const trp = n.nb.find(
+                        (e) =>
+                            e.order === 3 &&
+                            H[e.to].el === "N" &&
+                            H[e.to].nb.length === 1,
+                    );
+                    if (trp && n.nb.length === 2) return "cyano";
+                    return alkyl(H, at, from, ctx);
+                }
+
+                // carbon substituent, named systematically (propan-2-yl style)
+                function alkyl(H, at, from, ctx) {
+                    const br = branchAtoms(H, at, from);
+                    // a ring hanging off the parent is only handled bare
+                    const ringHere = br.list.filter((i) => ctx.ringSet.has(i));
+                    if (ringHere.length) {
+                        if (br.list.length !== ctx.ring.length) return null;
+                        if (at !== ringHere[0] && !ctx.ringSet.has(at)) return null;
+                        if (isBenzene(H, ctx.ring)) return "phenyl";
+                        if (!ctx.ring.every((i) => H[i].el === "C")) return null;
+                        for (let k = 0; k < ctx.ring.length; k++)
+                            if (
+                                bondOrder(
+                                    H,
+                                    ctx.ring[k],
+                                    ctx.ring[(k + 1) % ctx.ring.length],
+                                ) !== 1
+                            )
+                                return null;
+                        const s = STEM[ctx.ring.length];
+                        return s ? "cyclo" + s + "yl" : null;
+                    }
+                    for (const i of br.list) {
+                        if (H[i].el === "C") continue;
+                        if (
+                            ["O", "N", "S", "F", "Cl", "Br", "I"].indexOf(H[i].el) < 0
+                        )
+                            return null;
+                    }
+                    // unsaturation inside a substituent is left out of the subset
+                    for (const i of br.list)
+                        for (const e of H[i].nb)
+                            if (
+                                br.set.has(e.to) &&
+                                e.order > 1 &&
+                                !(H[i].el === "O" || H[e.to].el === "O")
+                            )
+                                return null;
+                    const allowed = br.set;
+                    // The parent chain of a substituent is the longest path that
+                    // *runs through* the attachment, not merely the longest one
+                    // leading away from it: for -CH(CH3)2 the two methyls join up
+                    // into propane with the free valence at C2 (propan-2-yl), where
+                    // measuring outward from the attachment would only ever see
+                    // ethane and call it 1-methylethyl.
+                    const kids = H[at].nb
+                        .filter((e) => e.to !== from && allowed.has(e.to) &&
+                            H[e.to].el === "C")
+                        .map((e) => {
+                            const f = farthestC(H, e.to, at, allowed);
+                            const arm = pathBetween(H, e.to, f.best, at, allowed);
+                            return arm;
+                        })
+                        .sort((a, b) => b.length - a.length);
+                    let chain;
+                    if (!kids.length) chain = [at];
+                    else if (kids.length === 1) chain = [at].concat(kids[0]);
+                    else
+                        chain = kids[0]
+                            .slice()
+                            .reverse()
+                            .concat([at], kids[1]);
+                    // the free valence must take the lowest locant it can, so the
+                    // chain is numbered from whichever end is nearer to it
+                    const idx = chain.indexOf(at);
+                    let ordered = chain;
+                    if (idx > chain.length - 1 - idx) ordered = chain.slice().reverse();
+                    const loc = ordered.indexOf(at) + 1;
+                    // `from` is the parent the branch hangs off; without it in
+                    // `consumed` the branch names its own parent as a
+                    // sub-substituent and recurses until the stack gives out
+                    const sub = collectPrefixes(H, ordered, new Set([from]), ctx);
+                    if (sub === null) return null;
+                    const stem = STEM[ordered.length];
+                    if (!stem) return null;
+                    const head = joinPrefixes(sub);
+                    if (loc === 1) return head + stem + "yl";
+                    return head + stem + "an-" + loc + "-yl";
+                }
+
+                // every substituent hanging off the given parent chain
+                function collectPrefixes(H, chain, consumed, ctx) {
+                    const inChain = new Set(chain);
+                    const out = [];
+                    for (let k = 0; k < chain.length; k++) {
+                        const u = chain[k];
+                        for (const e of H[u].nb) {
+                            if (inChain.has(e.to) || consumed.has(e.to)) continue;
+                            const nm = substituent(H, e.to, u, ctx);
+                            if (nm === null) return null;
+                            out.push({ name: nm, loc: k + 1 });
+                        }
+                    }
+                    return out;
+                }
+                function groupPrefixes(list) {
+                    const by = {};
+                    list.forEach((p) => {
+                        (by[p.name] = by[p.name] || []).push(p.loc);
+                    });
+                    return Object.keys(by)
+                        .map((name) => ({ name, locs: by[name].sort((a, b) => a - b) }))
+                        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+                }
+                function joinPrefixes(list, withLocants) {
+                    const groups = groupPrefixes(list);
+                    if (!groups.length) return "";
+                    return (
+                        groups
+                            .map((g) => {
+                                // a name carrying its own locants would be unreadable
+                                // run together with the parent's, so it gets brackets
+                                const complex = /[\d-]/.test(g.name);
+                                const nm = complex ? "(" + g.name + ")" : g.name;
+                                const m = MULT[g.locs.length] || "";
+                                const pre = withLocants === false ? "" : locantList(g.locs) + "-";
+                                return pre + m + nm;
+                            })
+                            .join("-") + ""
+                    );
+                }
+
+                /* ---------- parent assembly ---------- */
+                function unsatParts(H, chain) {
+                    const dbl = [],
+                        trp = [];
+                    for (let k = 0; k + 1 < chain.length; k++) {
+                        const o = bondOrder(H, chain[k], chain[k + 1]);
+                        if (o === 2) dbl.push(k + 1);
+                        else if (o === 3) trp.push(k + 1);
+                    }
+                    return { dbl, trp };
+                }
+                function ringUnsat(H, ring) {
+                    const dbl = [],
+                        trp = [];
+                    for (let k = 0; k < ring.length; k++) {
+                        const o = bondOrder(H, ring[k], ring[(k + 1) % ring.length]);
+                        if (o === 2) dbl.push(k + 1);
+                        else if (o === 3) trp.push(k + 1);
+                    }
+                    return { dbl, trp };
+                }
+                // Fusion locants (4a, 8a, 10b) are carried as 4.1, 8.1, 10.2 so
+                // that all the ordinary locant sorting and lowest-set comparison
+                // keeps working on plain numbers; they only turn back into
+                // letters when the name is finally written out.
+                function fmtLoc(v) {
+                    const n = Math.floor(v + 1e-9);
+                    const f = Math.round((v - n) * 10);
+                    return f ? n + "abcdefgh"[f - 1] : String(n);
+                }
+                function locantList(arr) {
+                    return arr.map(fmtLoc).join(",");
+                }
+                // stem + unsaturation + suffix. The "e" of -ane survives only
+                // when the suffix that follows opens with a consonant
+                // (butane-1,4-diol) and is elided before a vowel (butan-2-one).
+                // A multiplied -ene/-yne needs the "a" interfix: buta-1,3-diene.
+                function assemble(stem, unsat, count, suffKind, suffLocs, ringPrefix, omit) {
+                    let base = (ringPrefix || "") + stem;
+                    const { dbl, trp } = unsat;
+                    if (!dbl.length && !trp.length) base += "an";
+                    else if (omit) {
+                        if (dbl.length) base += "en";
+                        if (trp.length) base += "yn";
+                    } else {
+                        if (dbl.length)
+                            base +=
+                                (dbl.length > 1 ? "a" : "") + "-" +
+                                locantList(dbl) + "-" + (MULT[dbl.length] || "") + "en";
+                        if (trp.length)
+                            base +=
+                                (trp.length > 1 && !dbl.length ? "a" : "") + "-" +
+                                locantList(trp) + "-" + (MULT[trp.length] || "") + "yn";
+                    }
+                    if (!suffKind) return base + "e";
+                    const tail = (MULT[count] || "") + SUFFIX[suffKind];
+                    const glue = isVowel(tail[0]) ? "" : "e";
+                    const needLoc =
+                        !omit &&
+                        (suffKind === "ketone" ||
+                            suffKind === "alcohol" ||
+                            suffKind === "amine");
+                    if (needLoc)
+                        return base + glue + "-" + locantList(suffLocs) + "-" + tail;
+                    return base + glue + tail;
+                }
+
+                /* ---------- naming a chain parent ---------- */
+                function nameWithChain(H, chain, ctx, cyclic) {
+                    const inChain = new Set(chain);
+                    const kind = ctx.kind;
+                    const consumed = new Set();
+                    let suffLocs = [],
+                        count = 0;
+                    if (kind) {
+                        ctx.g[kind].forEach((it) => {
+                            if (!inChain.has(it.c)) return;
+                            count++;
+                            suffLocs.push(chain.indexOf(it.c) + 1);
+                            (it.extra || []).forEach((x) => consumed.add(x));
+                        });
+                        suffLocs.sort((a, b) => a - b);
+                    }
+                    const pre = collectPrefixes(H, chain, consumed, ctx);
+                    if (pre === null) return null;
+                    const unsat = cyclic
+                        ? ringUnsat(H, chain)
+                        : unsatParts(H, chain);
+                    const stem = STEM[chain.length];
+                    if (!stem) return null;
+                    // On a one-atom parent every locant is forced, and on a
+                    // two-atom parent a lone group is too, so both drop them:
+                    // dichloromethane, chloroethane, ethanol — not 1-chloroethane.
+                    const omit =
+                        chain.length === 1 ||
+                        (chain.length === 2 && count + pre.length <= 1);
+                    const parent = assemble(
+                        stem, unsat, count, count ? kind : null, suffLocs,
+                        cyclic ? "cyclo" : "", omit,
+                    );
+                    return joinPrefixes(pre, !omit) + parent;
+                }
+
+                /* ---------- candidate chains ---------- */
+                function carbonPaths(H, carbons) {
+                    const set = new Set(carbons);
+                    const out = [];
+                    if (carbons.length === 1) return [[carbons[0]]];
+                    for (let i = 0; i < carbons.length; i++)
+                        for (let j = i + 1; j < carbons.length; j++) {
+                            const p = pathBetween(H, carbons[i], carbons[j], -1, set);
+                            if (p.length > 1 && p[0] === carbons[i]) out.push(p);
+                        }
+                    return out;
+                }
+                function chainKey(H, chain, ctx) {
+                    const inChain = new Set(chain);
+                    const kind = ctx.kind;
+                    let n = 0;
+                    const sLoc = [];
+                    if (kind)
+                        ctx.g[kind].forEach((it) => {
+                            if (!inChain.has(it.c)) return;
+                            n++;
+                            sLoc.push(chain.indexOf(it.c) + 1);
+                        });
+                    sLoc.sort((a, b) => a - b);
+                    const { dbl, trp } = unsatParts(H, chain);
+                    const un = dbl.concat(trp).sort((a, b) => a - b);
+                    const consumed = new Set();
+                    if (kind)
+                        ctx.g[kind].forEach((it) => {
+                            if (inChain.has(it.c))
+                                (it.extra || []).forEach((x) => consumed.add(x));
+                        });
+                    const pre = collectPrefixes(H, chain, consumed, ctx);
+                    const pLoc = pre ? pre.map((p) => p.loc).sort((a, b) => a - b) : [];
+                    const names = pre
+                        ? groupPrefixes(pre).map((g) => g.name).join(",")
+                        : "";
+                    return [
+                        -n, -chain.length, -(dbl.length + trp.length), -dbl.length,
+                        sLoc, un, -(pre ? pre.length : 0), pLoc, names,
+                    ];
+                }
+
+                /* ---------- polycyclic ring systems ----------
+                   Three ways a ring system can be named here, tried in order:
+                   a retained name for the systems that have one (naphthalene,
+                   adamantane...), then von Baeyer spiro[a.b] and bicyclo[a.b.c].
+                   Fusion nomenclature proper — benzo[a]anthracene and friends —
+                   is not implemented, so a mancude fused system that is not in
+                   the retained list is refused rather than guessed at.        */
+
+                // suffixes used when the group's carbon hangs off a ring instead
+                // of being part of the parent: cyclohexanecarboxylic acid
+                const CARBO = {
+                    acid: "carboxylic acid", aldehyde: "carbaldehyde",
+                    nitrile: "carbonitrile",
+                };
+                // Retained ring systems. `l` gives each template atom the locant
+                // IUPAC fixes for it (4a is carried as 4.1), `b` the skeleton
+                // bonds; bond orders are deliberately absent — the mancude /
+                // hydro state is worked out from the drawing instead, so any
+                // Kekulé structure the user happens to draw matches.
+                const RETAINED = [
+                    {
+                        name: "naphthalene",
+                        l: [1, 2, 3, 4, 4.1, 5, 6, 7, 8, 8.1],
+                        b: [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,8],
+                            [8,9],[9,0],[4,9]],
+                    },
+                    {
+                        name: "anthracene",
+                        l: [1, 2, 3, 4, 4.1, 5, 6, 7, 8, 8.1, 9, 9.1, 10, 10.1],
+                        b: [[0,1],[1,2],[2,3],[3,4],[4,11],[11,0],
+                            [4,12],[12,13],[13,9],[9,10],[10,11],
+                            [13,5],[5,6],[6,7],[7,8],[8,9]],
+                    },
+                    {
+                        name: "phenanthrene",
+                        l: [1, 2, 3, 4, 4.1, 4.2, 5, 6, 7, 8, 8.1, 9, 10, 10.1],
+                        b: [[0,1],[1,2],[2,3],[3,4],[4,13],[13,0],
+                            [4,5],[5,10],[10,11],[11,12],[12,13],
+                            [5,6],[6,7],[7,8],[8,9],[9,10]],
+                    },
+                    {
+                        name: "azulene",
+                        l: [1, 2, 3, 3.1, 4, 5, 6, 7, 8, 8.1],
+                        b: [[0,1],[1,2],[2,3],[3,9],[9,0],
+                            [3,4],[4,5],[5,6],[6,7],[7,8],[8,9]],
+                    },
+                    {
+                        name: "indene",
+                        l: [1, 2, 3, 3.1, 4, 5, 6, 7, 7.1],
+                        b: [[0,1],[1,2],[2,3],[3,8],[8,0],
+                            [3,4],[4,5],[5,6],[6,7],[7,8]],
+                    },
+                    {
+                        name: "fluorene",
+                        l: [1, 2, 3, 4, 4.1, 4.2, 5, 6, 7, 8, 8.1, 9, 9.1],
+                        b: [[0,1],[1,2],[2,3],[3,4],[4,12],[12,0],
+                            [5,6],[6,7],[7,8],[8,9],[9,10],[10,5],
+                            [4,5],[10,11],[11,12]],
+                    },
+                    {
+                        name: "adamantane", sat: true,
+                        l: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                        b: [[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,7],[7,0],
+                            [0,8],[8,4],[2,9],[9,6]],
+                    },
+                    {
+                        // cubane's own numbering is not reproduced here, so it is
+                        // only named when nothing hangs off it
+                        name: "cubane", sat: true, bare: true,
+                        l: [1, 2, 3, 4, 5, 6, 7, 8],
+                        b: [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],
+                            [0,4],[1,5],[2,6],[3,7]],
+                    },
+                ];
+                // familiar names worth showing next to the systematic one
+                const COMMON = {
+                    "decahydronaphthalene": "decalin",
+                    "1,2,3,4-tetrahydronaphthalene": "tetralin",
+                    "2,3-dihydro-1H-indene": "indane",
+                    "octahydro-1H-indene": "hydrindane",
+                    "bicyclo[2.2.1]heptane": "norbornane",
+                    "bicyclo[2.2.1]hept-2-ene": "norbornene",
+                    "bicyclo[2.2.1]heptan-2-one": "norcamphor",
+                    "spiro[2.2]pentane": "",
+                    "adamantane": "tricyclo[3.3.1.1³,⁷]decane",
+                };
+
+                /* ---- every isomorphism from a template onto the ring core ---- */
+                function templateMaps(H, core, coreSet, tpl) {
+                    const tn = tpl.l.length;
+                    if (core.length !== tn) return [];
+                    const tadj = [];
+                    for (let i = 0; i < tn; i++) tadj.push([]);
+                    tpl.b.forEach(([i, j]) => {
+                        tadj[i].push(j);
+                        tadj[j].push(i);
+                    });
+                    const cdeg = {};
+                    let ce = 0;
+                    core.forEach((u) => {
+                        cdeg[u] = H[u].nb.filter((e) => coreSet.has(e.to)).length;
+                        ce += cdeg[u];
+                    });
+                    if (ce / 2 !== tpl.b.length) return [];
+                    // walk the template breadth-first so each atom placed is next
+                    // to one already placed, which keeps the search narrow
+                    const order = [],
+                        seenT = new Set([0]),
+                        q = [0];
+                    while (q.length) {
+                        const u = q.shift();
+                        order.push(u);
+                        tadj[u].forEach((v) => {
+                            if (!seenT.has(v)) {
+                                seenT.add(v);
+                                q.push(v);
+                            }
+                        });
+                    }
+                    if (order.length !== tn) return [];
+                    const maps = [],
+                        used = new Set(),
+                        assign = new Array(tn).fill(-1);
+                    const adjacent = (a, b) => H[a].nb.some((e) => e.to === b);
+                    const go = (k) => {
+                        if (maps.length > 200) return;
+                        if (k === tn) {
+                            maps.push(assign.slice());
+                            return;
+                        }
+                        const t = order[k];
+                        const anchor = tadj[t].find((v) => assign[v] >= 0);
+                        const cands =
+                            anchor === undefined
+                                ? core
+                                : H[assign[anchor]].nb
+                                      .filter((e) => coreSet.has(e.to))
+                                      .map((e) => e.to);
+                        for (const c of cands) {
+                            if (used.has(c) || cdeg[c] !== tadj[t].length) continue;
+                            let ok = true;
+                            for (let i = 0; i < tn && ok; i++) {
+                                if (assign[i] < 0) continue;
+                                if (
+                                    adjacent(c, assign[i]) !==
+                                    tadj[t].indexOf(i) >= 0
+                                )
+                                    ok = false;
+                            }
+                            if (!ok) continue;
+                            assign[t] = c;
+                            used.add(c);
+                            go(k + 1);
+                            used.delete(c);
+                            assign[t] = -1;
+                        }
+                    };
+                    go(0);
+                    return maps;
+                }
+
+                /* ---- mancude / hydro analysis ---- */
+                function ringDoubleCount(H, memberSet) {
+                    const cnt = {};
+                    memberSet.forEach((u) => (cnt[u] = 0));
+                    let bad = false;
+                    memberSet.forEach((u) => {
+                        H[u].nb.forEach((e) => {
+                            if (!memberSet.has(e.to)) return;
+                            if (e.order === 3) bad = true;
+                            if (e.order === 2) cnt[u]++;
+                        });
+                    });
+                    memberSet.forEach((u) => {
+                        if (cnt[u] > 1) bad = true;
+                    });
+                    return bad ? null : cnt;
+                }
+                // "naphthalene", "1,2,3,4-tetrahydronaphthalene", "1H-indene",
+                // "2,3-dihydro-1H-indene" — all from where the sp3 atoms are
+                function retainedWord(H, tpl, memberSet, locOf) {
+                    const cnt = ringDoubleCount(H, memberSet);
+                    if (!cnt) return null;
+                    const members = Array.from(memberSet);
+                    const sp3 = members.filter((u) => cnt[u] === 0);
+                    const n = members.length;
+                    if (tpl.sat)
+                        return sp3.length === n
+                            ? { word: tpl.name, indLoc: null, hLoc: [] }
+                            : null;
+                    let indicated = null,
+                        hydro = sp3;
+                    if (n % 2) {
+                        // an odd mancude ring system always keeps one sp3 atom,
+                        // written as indicated hydrogen (1H-indene)
+                        if (!sp3.length) return null;
+                        indicated = sp3.reduce(
+                            (m, u) => (locOf[u] < locOf[m] ? u : m), sp3[0],
+                        );
+                        hydro = sp3.filter((u) => u !== indicated);
+                    }
+                    if (hydro.length % 2) return null;
+                    const indLoc = indicated !== null ? locOf[indicated] : null;
+                    const ind = indLoc !== null ? fmtLoc(indLoc) + "H-" : "";
+                    const hLoc = hydro.map((u) => locOf[u]).sort((a, b) => a - b);
+                    if (!hydro.length)
+                        return { word: ind + tpl.name, indLoc, hLoc };
+                    const m = MULT[hydro.length];
+                    if (!m) return null;
+                    const all = hydro.length === n - (indicated !== null ? 1 : 0);
+                    const pre = all ? "" : locantList(hLoc) + "-";
+                    return {
+                        // the hyphen belongs to the indicated hydrogen, not to
+                        // "hydro": 2,3-dihydro-1H-indene, but tetrahydronaphthalene
+                        word: pre + m + "hydro" + (ind ? "-" + ind : "") + tpl.name,
+                        indLoc, hLoc,
+                    };
+                }
+
+                /* ---- von Baeyer ---- */
+                // walk a bridge of degree-2 atoms from `head` until a bridgehead
+                function walkBridge(H, coreSet, deg, head, first, other) {
+                    const path = [];
+                    let prev = head,
+                        cur = first;
+                    while (cur !== other) {
+                        if (deg[cur] !== 2 || path.length > 200) return null;
+                        path.push(cur);
+                        const nx = H[cur].nb.filter(
+                            (e) => coreSet.has(e.to) && e.to !== prev,
+                        );
+                        if (nx.length !== 1) return null;
+                        prev = cur;
+                        cur = nx[0].to;
+                    }
+                    return path;
+                }
+                function bicycloInfo(H, core, coreSet, deg) {
+                    const heads = core.filter((i) => deg[i] === 3);
+                    if (heads.length !== 2) return null;
+                    if (core.some((i) => deg[i] !== 2 && deg[i] !== 3)) return null;
+                    const [A, B] = heads;
+                    const bridges = [];
+                    for (const e of H[A].nb) {
+                        if (!coreSet.has(e.to)) continue;
+                        if (e.to === B) {
+                            bridges.push([]);
+                            continue;
+                        }
+                        const p = walkBridge(H, coreSet, deg, A, e.to, B);
+                        if (!p) return null;
+                        bridges.push(p);
+                    }
+                    if (bridges.length !== 3) return null;
+                    return { heads: [A, B], bridges };
+                }
+                function spiroInfo(H, core, coreSet, deg) {
+                    const sp = core.filter((i) => deg[i] === 4);
+                    if (sp.length !== 1) return null;
+                    if (core.some((i) => i !== sp[0] && deg[i] !== 2)) return null;
+                    const s = sp[0];
+                    const loops = [],
+                        done = new Set();
+                    for (const e of H[s].nb) {
+                        if (!coreSet.has(e.to) || done.has(e.to)) continue;
+                        const p = walkBridge(H, coreSet, deg, s, e.to, s);
+                        if (!p) return null;
+                        p.forEach((x) => done.add(x));
+                        loops.push(p);
+                    }
+                    if (loops.length !== 2) return null;
+                    return { spiro: s, loops };
+                }
+                function permsOf3() {
+                    return [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+                }
+                // numbering runs from a bridgehead along the longest bridge to the
+                // far bridgehead, back along the next longest, then the shortest
+                // starting from the atom nearer to C1
+                function bicycloNumberings(info) {
+                    const [A, B] = info.heads;
+                    const br = info.bridges;
+                    const out = [];
+                    for (const p of permsOf3()) {
+                        const [i, j, k] = p;
+                        if (br[i].length < br[j].length || br[j].length < br[k].length)
+                            continue;
+                        for (const head of [A, B]) {
+                            const other = head === A ? B : A;
+                            const flip = head === B;
+                            const b1 = flip ? br[i].slice().reverse() : br[i];
+                            const b2 = flip ? br[j] : br[j].slice().reverse();
+                            const b3 = flip ? br[k].slice().reverse() : br[k];
+                            const seq = [head]
+                                .concat(b1, [other], b2, b3);
+                            const locOf = {};
+                            seq.forEach((u, n) => (locOf[u] = n + 1));
+                            out.push({
+                                locOf,
+                                desc:
+                                    "bicyclo[" + br[i].length + "." +
+                                    br[j].length + "." + br[k].length + "]",
+                                n: seq.length,
+                            });
+                        }
+                    }
+                    return out;
+                }
+                // numbering starts in the smaller ring next to the spiro atom,
+                // goes round it, through the spiro atom, then round the larger
+                function spiroNumberings(info) {
+                    const { spiro, loops } = info;
+                    const out = [];
+                    const pairs =
+                        loops[0].length === loops[1].length
+                            ? [[0, 1], [1, 0]]
+                            : loops[0].length < loops[1].length
+                              ? [[0, 1]]
+                              : [[1, 0]];
+                    for (const [a, b] of pairs)
+                        for (const da of [1, -1])
+                            for (const db of [1, -1]) {
+                                const small = da === 1 ? loops[a] : loops[a].slice().reverse();
+                                const big = db === 1 ? loops[b] : loops[b].slice().reverse();
+                                const seq = small.concat([spiro], big);
+                                const locOf = {};
+                                seq.forEach((u, n) => (locOf[u] = n + 1));
+                                out.push({
+                                    locOf,
+                                    desc:
+                                        "spiro[" + loops[a].length + "." +
+                                        loops[b].length + "]",
+                                    n: seq.length,
+                                });
+                            }
+                    return out;
+                }
+                // ring double bonds, as locants, for a von Baeyer numbering
+                function polyUnsat(H, memberSet, locOf) {
+                    const dbl = [], trp = [], seen = new Set();
+                    for (const u of memberSet)
+                        for (const e of H[u].nb) {
+                            if (!memberSet.has(e.to) || seen.has(e.id)) continue;
+                            if (e.order === 1) continue;
+                            seen.add(e.id);
+                            const lo = Math.min(locOf[u], locOf[e.to]);
+                            const hi = Math.max(locOf[u], locOf[e.to]);
+                            // a bond between atoms that are not numbered
+                            // consecutively needs the 1(7) composite locant form,
+                            // which is not implemented
+                            if (hi - lo !== 1) return null;
+                            (e.order === 2 ? dbl : trp).push(lo);
+                        }
+                    dbl.sort((a, b) => a - b);
+                    trp.sort((a, b) => a - b);
+                    return { dbl, trp };
+                }
+
+                /* ---- shared scoring for any ring-system parent ---- */
+                function prefixesFor(H, memberSet, locOf, consumed, ctx) {
+                    const out = [];
+                    const list = Array.from(memberSet).sort(
+                        (a, b) => locOf[a] - locOf[b],
+                    );
+                    for (const u of list)
+                        for (const e of H[u].nb) {
+                            if (memberSet.has(e.to) || consumed.has(e.to)) continue;
+                            const nm = substituent(H, e.to, u, ctx);
+                            if (nm === null) return null;
+                            out.push({ name: nm, loc: locOf[u] });
+                        }
+                    return out;
+                }
+                // is the principal group on the ring, or on a carbon hanging off
+                // it (which makes it a -carboxylic acid rather than an -oic acid)?
+                function carboMode(H, memberSet, ctx) {
+                    const kind = ctx.kind;
+                    if (!kind) return false;
+                    if (ctx.g[kind].some((it) => memberSet.has(it.c))) return false;
+                    if (!CARBO[kind]) return null;
+                    const ok = ctx.g[kind].every((it) => {
+                        const link = H[it.c].nb.filter((e) => memberSet.has(e.to));
+                        const otherC = H[it.c].nb.filter(
+                            (e) => H[e.to].el === "C" && !memberSet.has(e.to),
+                        );
+                        return link.length === 1 && !otherC.length;
+                    });
+                    return ok ? true : null;
+                }
+                function ringScore(H, memberSet, locOf, ctx, carbo) {
+                    const consumed = new Set();
+                    const sLoc = [];
+                    let count = 0;
+                    const kind = ctx.kind;
+                    if (kind)
+                        for (const it of ctx.g[kind]) {
+                            if (carbo) {
+                                const link = H[it.c].nb.filter((e) =>
+                                    memberSet.has(e.to),
+                                );
+                                if (link.length !== 1) return null;
+                                count++;
+                                sLoc.push(locOf[link[0].to]);
+                                consumed.add(it.c);
+                            } else {
+                                if (!memberSet.has(it.c)) continue;
+                                count++;
+                                sLoc.push(locOf[it.c]);
+                            }
+                            (it.extra || []).forEach((x) => consumed.add(x));
+                        }
+                    sLoc.sort((a, b) => a - b);
+                    const pre = prefixesFor(H, memberSet, locOf, consumed, ctx);
+                    if (pre === null) return null;
+                    return {
+                        count, sLoc, pre,
+                        key: [
+                            sLoc,
+                            pre.map((p) => p.loc).sort((a, b) => a - b),
+                            groupPrefixes(pre).map((g) => g.name).join(","),
+                        ],
+                    };
+                }
+                // parent word + suffix, sharing the elision rule with chains
+                function attachToWord(word, count, suffKind, sLoc, carbo, omitLoc) {
+                    if (!suffKind) return word;
+                    const tail =
+                        (MULT[count] || "") +
+                        (carbo ? CARBO[suffKind] : SUFFIX[suffKind]);
+                    const base =
+                        /e$/.test(word) && isVowel(tail[0])
+                            ? word.slice(0, -1)
+                            : word;
+                    const needLoc =
+                        carbo ||
+                        suffKind === "ketone" ||
+                        suffKind === "alcohol" ||
+                        suffKind === "amine";
+                    if (!needLoc || omitLoc) return base + tail;
+                    return base + "-" + locantList(sLoc) + "-" + tail;
+                }
+
+                /* ---- naming a polycyclic ring system ---- */
+                function namePoly(H, rr, ctx) {
+                    const { core, coreSet, coreDeg, rings } = rr;
+                    if (!core.every((i) => H[i].el === "C"))
+                        return fail("rings with heteroatoms aren’t supported");
+                    const carbo = carboMode(H, coreSet, ctx);
+                    if (carbo === null)
+                        return fail(
+                            "this group can’t be named on a ring system yet",
+                        );
+                    const cands = [];
+
+                    // 1. a retained ring system
+                    for (const tpl of RETAINED) {
+                        const maps = templateMaps(H, core, coreSet, tpl);
+                        if (!maps.length) continue;
+                        for (const asg of maps) {
+                            const locOf = {};
+                            asg.forEach((atom, ti) => (locOf[atom] = tpl.l[ti]));
+                            const rw = retainedWord(H, tpl, coreSet, locOf);
+                            if (!rw) continue;
+                            const sc = ringScore(H, coreSet, locOf, ctx, carbo);
+                            if (!sc) continue;
+                            if (tpl.bare && (sc.count || sc.pre.length)) continue;
+                            // indicated hydrogen is ranked first, then the
+                            // principal group, then the hydro prefixes
+                            cands.push({
+                                locOf, sc, word: rw.word,
+                                key1: [rw.indLoc === null ? [] : [rw.indLoc]],
+                                key2: [rw.hLoc],
+                            });
+                        }
+                        if (cands.length) break;
+                    }
+
+                    // 2. von Baeyer, for systems with no retained name
+                    if (!cands.length && rings === 2) {
+                        const sp = spiroInfo(H, core, coreSet, coreDeg);
+                        const bi = sp ? null : bicycloInfo(H, core, coreSet, coreDeg);
+                        const nums = sp
+                            ? spiroNumberings(sp)
+                            : bi
+                              ? bicycloNumberings(bi)
+                              : null;
+                        if (!nums)
+                            return fail(
+                                "this ring system is outside the supported subset",
+                            );
+                        for (const num of nums) {
+                            const stem = STEM[num.n];
+                            if (!stem) continue;
+                            const un = polyUnsat(H, coreSet, num.locOf);
+                            if (!un) continue;
+                            const sc = ringScore(H, coreSet, num.locOf, ctx, carbo);
+                            if (!sc) continue;
+                            const word = assemble(
+                                stem, un, 0, null, [], num.desc, false,
+                            );
+                            cands.push({
+                                locOf: num.locOf, sc, word,
+                                key2: [un.dbl.concat(un.trp)],
+                            });
+                        }
+                    }
+
+                    if (!cands.length)
+                        return fail(
+                            rings > 2
+                                ? "this polycyclic system has no retained name and " +
+                                  "fusion nomenclature isn’t implemented"
+                                : "this ring system is outside the supported subset",
+                        );
+
+                    let best = null,
+                        bestKey = null;
+                    for (const c of cands) {
+                        // indicated H, then suffix locants, then hydro/ene, then
+                        // the detachable prefixes
+                        const key = (c.key1 || [])
+                            .concat([c.sc.key[0]], c.key2 || [], c.sc.key.slice(1));
+                        if (!bestKey || cmpKey(key, bestKey) < 0) {
+                            bestKey = key;
+                            best = c;
+                        }
+                    }
+                    const { sc, word } = best;
+                    const omitLoc =
+                        sc.count === 1 && !sc.pre.length && sc.sLoc[0] === 1 && carbo;
+                    const parent = attachToWord(
+                        word, sc.count, sc.count ? ctx.kind : null, sc.sLoc, carbo,
+                        omitLoc,
+                    );
+                    const name = joinPrefixes(sc.pre) + parent;
+                    const out = { name };
+                    const common = COMMON[name];
+                    if (common) out.common = common;
+                    return out;
+                }
+
+                /* ---------- entry point ---------- */
+                function nameOf(atoms, bonds) {
+                    if (!atoms || !atoms.length) return fail("");
+                    const H = SMILESgen.buildGraph(atoms, bonds || []);
+                    if (!H.length) return fail("");
+                    if (H.some((n) => n.unknown))
+                        return fail(
+                            "the drawing has a label this can’t read as a structure",
+                        );
+                    // one connected structure only
+                    const seen = new Set([0]),
+                        st = [0];
+                    while (st.length) {
+                        const u = st.pop();
+                        H[u].nb.forEach((e) => {
+                            if (!seen.has(e.to)) {
+                                seen.add(e.to);
+                                st.push(e.to);
+                            }
+                        });
+                    }
+                    if (seen.size !== H.length)
+                        return fail("only one connected structure at a time");
+
+                    const sc = scan(H);
+                    if (sc.bad) return fail(sc.bad);
+                    const g = sc.g;
+                    if (g.ester.length) return fail("esters aren’t supported yet");
+                    if (g.amide.length) return fail("amides aren’t supported yet");
+
+                    const rr = ringSystem(H);
+                    if (rr.kind === "assembly")
+                        return fail(
+                            "ring assemblies — rings joined by a bond or a chain — " +
+                            "aren’t supported",
+                        );
+                    const ring = rr.kind === "ring" ? rr.ring : [];
+                    const ringSet = new Set(ring);
+
+                    let kind = null;
+                    for (const k of SENIORITY)
+                        if (g[k].length) {
+                            kind = k;
+                            break;
+                        }
+                    const ctx = { g, kind, nitro: sc.nitro, ring, ringSet };
+                    if (rr.kind === "poly") return namePoly(H, rr, ctx);
+
+                    const carbons = [];
+                    for (let i = 0; i < H.length; i++)
+                        if (H[i].el === "C") carbons.push(i);
+                    if (!carbons.length) return fail("no carbon skeleton to name");
+
+                    /* ---- ring parent ---- */
+                    if (ring.length) {
+                        if (!ring.every((i) => H[i].el === "C"))
+                            return fail("rings with heteroatoms aren’t supported");
+                        const onRing =
+                            kind && g[kind].some((it) => ringSet.has(it.c));
+                        if (kind && !onRing) {
+                            // benzoic acid / benzaldehyde / benzonitrile: one carbon
+                            // bearing the group, joined straight to the ring
+                            if (isBenzene(H, ring) && BENZ_ATTACHED[kind] &&
+                                g[kind].length === 1) {
+                                const gc = g[kind][0].c;
+                                const link = H[gc].nb.filter((e) => ringSet.has(e.to));
+                                const otherC = H[gc].nb.filter(
+                                    (e) => H[e.to].el === "C" && !ringSet.has(e.to),
+                                );
+                                if (link.length === 1 && !otherC.length) {
+                                    const nb = nameBenzAttached(
+                                        H, ring, link[0].to, gc, ctx,
+                                    );
+                                    if (nb) return { name: nb };
+                                }
+                            }
+                            // -carboxylic acid / -carbaldehyde / -carbonitrile:
+                            // the ring stays the parent and the group's carbon is
+                            // counted by the suffix, not made into a chain
+                            if (carboMode(H, ringSet, ctx) === true)
+                                return nameRing(H, ring, ctx);
+                            // the group sits on a chain, so the ring is a substituent
+                            const chainCarbons = carbons.filter((i) => !ringSet.has(i));
+                            if (!chainCarbons.length)
+                                return fail("this ring/chain arrangement isn’t supported");
+                            const cands = carbonPaths(H, chainCarbons);
+                            const best = pickChain(H, cands, ctx);
+                            if (!best) return fail("couldn’t find a parent chain");
+                            const nm = nameWithChain(H, best, ctx, false);
+                            return nm
+                                ? { name: nm }
+                                : fail("this structure is outside the supported subset");
+                        }
+                        return nameRing(H, ring, ctx);
+                    }
+
+                    /* ---- chain parent ---- */
+                    const cands = carbonPaths(H, carbons);
+                    if (kind && TERMINAL[kind]) {
+                        // -oic acid, -al and -nitrile must sit at C1, so only chains
+                        // that actually end on the group are candidates
+                        const ends = new Set(g[kind].map((it) => it.c));
+                        const ok = cands.filter(
+                            (p) => ends.has(p[0]) || ends.has(p[p.length - 1]),
+                        );
+                        if (ok.length) cands.length = 0, ok.forEach((p) => cands.push(p));
+                    }
+                    const best = pickChain(H, cands, ctx);
+                    if (!best) return fail("couldn’t find a parent chain");
+                    if (best.length >= STEM.length)
+                        return fail("chains longer than 20 atoms aren’t supported");
+                    const nm = nameWithChain(H, best, ctx, false);
+                    return nm
+                        ? { name: nm }
+                        : fail("this structure is outside the supported subset");
+                }
+
+                function pickChain(H, cands, ctx) {
+                    let best = null,
+                        bestKey = null;
+                    cands.forEach((p) => {
+                        [p, p.slice().reverse()].forEach((dir) => {
+                            const k = chainKey(H, dir, ctx);
+                            if (!bestKey || cmpKey(k, bestKey) < 0) {
+                                bestKey = k;
+                                best = dir;
+                            }
+                        });
+                    });
+                    return best;
+                }
+
+                /* ---------- ring parent ---------- */
+                // retained names IUPAC requires for benzene derivatives.
+                // ON_RING: the group hangs straight off a ring atom.
+                // ATTACHED: the group sits on a single carbon joined to the ring,
+                // and that carbon is part of the retained name (benzoic acid).
+                const BENZ_ON_RING = { alcohol: "phenol", amine: "aniline" };
+                const BENZ_ATTACHED = {
+                    acid: "benzoic acid", aldehyde: "benzaldehyde",
+                    nitrile: "benzonitrile",
+                };
+                // ring numbered from the atom carrying the retained group
+                function nameBenzAttached(H, ring, anchor, groupC, ctx) {
+                    const n = ring.length;
+                    const start = ring.indexOf(anchor);
+                    const consumed = new Set([groupC]);
+                    (ctx.g[ctx.kind][0].extra || []).forEach((x) => consumed.add(x));
+                    let best = null, bestKey = null;
+                    for (const dir of [1, -1]) {
+                        const order = [];
+                        for (let k = 0; k < n; k++)
+                            order.push(ring[(start + dir * k + n * n) % n]);
+                        const pre = collectPrefixes(H, order, consumed, ctx);
+                        if (pre === null) continue;
+                        const key = [
+                            pre.map((p) => p.loc).sort((a, b) => a - b),
+                            groupPrefixes(pre).map((g) => g.name).join(","),
+                        ];
+                        if (!bestKey || cmpKey(key, bestKey) < 0) {
+                            bestKey = key;
+                            best = joinPrefixes(pre) + BENZ_ATTACHED[ctx.kind];
+                        }
+                    }
+                    return best;
+                }
+                // One ring: every rotation and both directions are legal
+                // numberings, so all of them are scored and the lowest-locant one
+                // wins — the same shared scoring the polycyclic systems use.
+                function nameRing(H, ring, ctx) {
+                    const n = ring.length;
+                    const memberSet = new Set(ring);
+                    const benz = isBenzene(H, ring);
+                    const carbo = carboMode(H, memberSet, ctx);
+                    if (carbo === null)
+                        return fail("this group can’t be named on a ring yet");
+                    const cands = [];
+                    for (let st = 0; st < n; st++)
+                        for (const dir of [1, -1]) {
+                            const order = [];
+                            for (let k = 0; k < n; k++)
+                                order.push(ring[(st + dir * k + n * n) % n]);
+                            const locOf = {};
+                            order.forEach((u, i) => (locOf[u] = i + 1));
+                            const sc = ringScore(H, memberSet, locOf, ctx, carbo);
+                            if (!sc) continue;
+                            const un = ringUnsat(H, order);
+                            const unLoc = un.dbl.concat(un.trp).sort((a, b) => a - b);
+                            let word,
+                                whole = false;
+                            if (benz) {
+                                if (sc.count && !carbo) {
+                                    // phenol / aniline already say the suffix
+                                    const r = BENZ_ON_RING[ctx.kind];
+                                    if (!r || sc.count !== 1 || sc.sLoc[0] !== 1)
+                                        continue;
+                                    word = r;
+                                    whole = true;
+                                } else word = "benzene";
+                            } else {
+                                const stem = STEM[n];
+                                if (!stem) continue;
+                                const bare = !sc.count && !sc.pre.length;
+                                word = assemble(
+                                    stem, un, 0, null, [], "cyclo",
+                                    bare && unLoc.length === 1,
+                                );
+                            }
+                            // benzene never spells its ring double bonds out,
+                            // so they take no part in the numbering either
+                            cands.push({ sc, word, whole, unLoc: benz ? [] : unLoc });
+                        }
+                    if (!cands.length)
+                        return fail("this ring is outside the supported subset");
+                    let best = null,
+                        bestKey = null;
+                    for (const c of cands) {
+                        const key = [c.sc.key[0], c.unLoc, c.sc.key[1], c.sc.key[2]];
+                        if (!bestKey || cmpKey(key, bestKey) < 0) {
+                            bestKey = key;
+                            best = c;
+                        }
+                    }
+                    const { sc, word, whole, unLoc } = best;
+                    // a lone substituent on a ring needs no locant, and neither
+                    // does a single -carboxylic acid at position 1
+                    const loneSub =
+                        sc.pre.length === 1 && !sc.count && !unLoc.length;
+                    const omitSuffLoc =
+                        carbo && sc.count === 1 && !sc.pre.length && sc.sLoc[0] === 1;
+                    const parent = whole
+                        ? word
+                        : attachToWord(
+                              word, sc.count, sc.count ? ctx.kind : null, sc.sLoc,
+                              carbo, omitSuffLoc,
+                          );
+                    return {
+                        name: joinPrefixes(sc.pre, !loneSub) + parent,
+                    };
+                }
+
+                return { nameOf };
             })();
 
             function chemfigFor(c) {
