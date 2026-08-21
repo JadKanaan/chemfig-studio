@@ -5405,10 +5405,19 @@
                 // Returns a string, or null when the branch is outside the subset.
                 function substituent(H, at, from, ctx) {
                     const n = H[at];
-                    if (ctx.nitro.has(at)) return n.el === "N" ? "nitro" : null;
-                    if (HALO[n.el]) return HALO[n.el];
+                    // The bond being crossed carries information the substituent
+                    // name has to express: a doubly bonded carbon is an ylidene,
+                    // not an yl. Every branch below therefore checks the incoming
+                    // order, and anything not explicitly handled refuses — a bond
+                    // order dropped in silence is exactly how =CH2 came out as
+                    // "methyl" rather than "methylidene".
+                    const inOrder = bondOrder(H, from, at);
+                    if (ctx.nitro.has(at))
+                        return n.el === "N" && inOrder === 1 ? "nitro" : null;
+                    if (HALO[n.el]) return inOrder === 1 ? HALO[n.el] : null;
                     if (n.el === "O") {
-                        if (bondOrder(H, from, at) === 2) return "oxo";
+                        if (inOrder === 2) return "oxo";
+                        if (inOrder !== 1) return null;
                         if (n.h === 1 && n.nb.length === 1) return "hydroxy";
                         if (n.nb.length === 2) {
                             const other = n.nb.find((e) => e.to !== from);
@@ -5421,16 +5430,22 @@
                         return null;
                     }
                     if (n.el === "S") {
-                        if (bondOrder(H, from, at) === 2) return "sulfanylidene";
+                        if (inOrder === 2) return "sulfanylidene";
+                        if (inOrder !== 1) return null;
                         if (n.h === 1 && n.nb.length === 1) return "sulfanyl";
                         return null;
                     }
                     if (n.el === "N") {
-                        if (n.nb.length === 1 && bondOrder(H, from, at) === 1)
-                            return "amino";
+                        if (n.nb.length === 1 && inOrder === 1) return "amino";
                         return null;
                     }
                     if (n.el !== "C") return null;
+                    if (inOrder === 3) return null;   // ylidyne: out of scope
+                    if (inOrder === 2) {
+                        // =CH2 is methylidene, =CH-CH3 ethylidene, and so on
+                        const yl = alkyl(H, at, from, ctx);
+                        return yl && /yl$/.test(yl) ? yl + "idene" : null;
+                    }
                     // -C#N hanging off the parent is a cyano prefix
                     const trp = n.nb.find(
                         (e) =>
@@ -6124,12 +6139,16 @@
                     sLoc.sort((a, b) => a - b);
                     const pre = prefixesFor(H, memberSet, locOf, consumed, ctx);
                     if (pre === null) return null;
+                    const groups = groupPrefixes(pre);
                     return {
                         count, sLoc, pre,
                         key: [
                             sLoc,
                             pre.map((p) => p.loc).sort((a, b) => a - b),
-                            groupPrefixes(pre).map((g) => g.name).join(","),
+                            // locants read out in alphabetical order of the
+                            // prefixes, so "methyl" outranks "methylidene"
+                            groups.reduce((acc, g) => acc.concat(g.locs), []),
+                            groups.map((g) => g.name).join(","),
                         ],
                     };
                 }
